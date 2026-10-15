@@ -2,7 +2,7 @@
 # Set the two secret values marked sync:false in the Render dashboard.
 databases:
   - name: wardbook-db
-    plan: basic-256mb        # paid tier = daily backups; check Render's current free-tier limits before using it for real data
+    plan: free      # paid tier = daily backups; check Render's current free-tier limits before using it for real data
     databaseName: wardbook
     user: wardbook
 
@@ -10,7 +10,7 @@ services:
   - type: web
     name: wardbook
     runtime: python
-    plan: starter
+    plan: free
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --no-input && python manage.py migrate
     startCommand: gunicorn config.wsgi:application --workers 2 --timeout 60
     healthCheckPath: /login/
