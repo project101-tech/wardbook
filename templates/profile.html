@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}My profile{% endblock %}
+
+{% block content %}
+<div class="card-wb p-4">
+  <div class="text-center mb-4">
+    <div class="av-lg mb-2">{{ user.avatar_html }}</div>
+    <h1 class="h4 fw-bold mb-1">{{ user.display_name }}</h1>
+    <span class="house-chip">House {{ user.house }}</span>
+    <div class="small text-muted mt-2">{{ my_posts }} post{{ my_posts|pluralize }} in the Town Square</div>
+  </div>
+
+  <form method="post" enctype="multipart/form-data" novalidate>
+    {% csrf_token %}
+    {% for field in form %}
+      <div class="mb-3">
+        <label class="form-label fw-semibold small" for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% for e in field.errors %}<div class="text-danger small mt-1">{{ e }}</div>{% endfor %}
+      </div>
+    {% endfor %}
+    <p class="small text-muted">Your house number and mobile number can only be changed by the committee.</p>
+    <button class="btn btn-wb w-100 py-2" type="submit">Save profile</button>
+  </form>
+</div>
+
+<form method="post" action="{% url 'logout' %}" class="text-center mt-3">
+  {% csrf_token %}
+  <button class="btn btn-link text-muted"><i class="bi bi-box-arrow-right me-1"></i>Log out</button>
+</form>
+{% endblock %}

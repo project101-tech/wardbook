@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+{% block title %}Messages{% endblock %}
+{% block mainclass %}wide{% endblock %}
+
+{% block head %}
+<style>
+  .chat-box { height: calc(100dvh - 270px); min-height: 300px; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: .4rem; }
+  @media (min-width: 768px) { .chat-box { height: 56vh; } }
+  .bubble { max-width: 82%; padding: .5rem .8rem; border-radius: 18px; }
+  .bubble .txt { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .bubble .who { font-size: .7rem; font-weight: 700; color: var(--wb-accent); margin-bottom: 1px; }
+  .bubble .meta { font-size: .65rem; opacity: .65; text-align: right; margin-top: 1px; }
+  .bubble img.pic { display: block; max-width: 100%; max-height: 300px; border-radius: 12px; margin: .1rem 0 .25rem; cursor: zoom-in; }
+  .bubble audio { display: block; width: 230px; max-width: 100%; height: 38px; margin: .15rem 0; }
+  .bubble.mine { align-self: flex-end; background: var(--wb-accent); color: #fff; border-bottom-right-radius: 5px; }
+  .bubble.theirs { align-self: flex-start; background: #e9edf2; border-bottom-left-radius: 5px; }
+  .thread { display: flex; gap: .75rem; align-items: center; padding: .7rem 1rem; text-decoration: none; color: inherit; border-bottom: 1px solid var(--wb-line); }
+  .thread:hover, .thread.on { background: var(--wb-accent-soft); }
+  .thread:last-child { border-bottom: 0; }
+  .rec-bar { display: none; align-items: center; gap: .6rem; }
+  .rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--wb-red); animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+  .pick { max-height: 220px; overflow-y: auto; border: 1px solid var(--wb-line); border-radius: 12px; padding: .25rem .75rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% with is_chat=peer|default:group %}
+<div class="row g-3">
+  <!-- ============ conversation list ============ -->
+  <div class="col-md-4 {% if is_chat %}d-none d-md-block{% endif %}">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h1 class="page-title h3 mb-0">Messages</h1>
+      <button class="btn btn-soft btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#new-group">
+        <i class="bi bi-people-fill me-1"></i>New group
+      </button>
+    </div>
+
+    <div class="collapse mb-3" id="new-group">
+      <form class="card-wb p-3" method="post" action="{% url 'group_new' %}">
+        {% csrf_token %}
+        <input class="form-control mb-2" name="name" maxlength="60" required placeholder="Group name, e.g. Block A parents">
+        <div class="small fw-semibold mb-1">Add neighbours</div>
+        <div class="pick mb-2">
+          {% for r in residents %}
+            <label class="d-flex align-items-center gap-2 py-1" style="cursor:pointer">
+              <input class="form-check-input mt-0" type="checkbox" name="members" value="{{ r.pk }}">
+              <span class="text-truncate">{{ r.display_name }}</span><span class="house-chip ms-auto">{{ r.house }}</span>
+            </label>
+          {% endfor %}
+        </div>
+        <button class="btn btn-wb w-100">Create group</button>
+      </form>
+    </div>
+
+    <div class="card-wb overflow-hidden">
+      {% for t in threads %}
+        <a class="thread {% if active_key == t.key %}on{% endif %}" href="{{ t.url }}">
+          {{ t.avatar }}
+          <div class="flex-grow-1 min-w-0 lh-sm">
+            <div class="fw-bold text-truncate">{{ t.title }} {% if t.chip %}<span class="house-chip">{{ t.chip }}</span>{% endif %}</div>
+            <small class="text-muted d-block text-truncate">{{ t.preview }}</small>
+          </div>
+          {% if t.unread %}<span class="badge rounded-pill" style="background:var(--wb-red)">{{ t.unread }}</span>{% endif %}
+        </a>
+      {% empty %}
+        <div class="p-4 text-center text-muted small">
+          <i class="bi bi-chat-dots fs-2 d-block mb-1"></i>
+          No chats yet. Find a neighbour in <a href="{% url 'directory' %}">Neighbours</a> and tap Message, or start a group.
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- ============ open chat ============ -->
+  <div class="col-md-8 {% if not is_chat %}d-none d-md-block{% endif %}">
+    {% if is_chat %}
+      <div class="card-wb overflow-hidden">
+        <div class="d-flex align-items-center gap-2 p-3 border-bottom">
+          <a class="icon-btn d-md-none" href="{% url 'inbox' %}" aria-label="Back"><i class="bi bi-arrow-left fs-5"></i></a>
+          {% if group %}
+            {{ group.avatar_html }}
+            <div class="lh-sm flex-grow-1 min-w-0">
+              <div class="fw-bold text-truncate">{{ group.name }}</div>
+              <small class="text-muted">{{ members|length }} member{{ members|length|pluralize }}</small>
+            </div>
+            <button class="icon-btn" type="button" data-bs-toggle="collapse" data-bs-target="#group-info" aria-label="Group info"><i class="bi bi-info-circle fs-5"></i></button>
+          {% else %}
+            {{ peer.avatar_html }}
+            <div class="lh-sm">
+              <div class="fw-bold">{{ peer.display_name }}</div>
+              <span class="house-chip">House {{ peer.house }}</span>
+            </div>
+          {% endif %}
+        </div>
+
+        {% if group %}
+        <div class="collapse border-bottom bg-light" id="group-info">
+          <div class="p-3">
+            <div class="small fw-semibold mb-2">Members</div>
+            <div class="d-flex flex-wrap gap-1 mb-3">
+              {% for m in members %}<span class="house-chip">{{ m.user.display_name }}{% if m.user.house %} · {{ m.user.house }}{% endif %}</span>{% endfor %}
+            </div>
+            {% if can_manage and addable %}
+              <form method="post" action="{% url 'group_add' group.pk %}" class="mb-3">
+                {% csrf_token %}
+                <div class="small fw-semibold mb-1">Add people</div>
+                <div class="pick mb-2 bg-white">
+                  {% for r in addable %}
+                    <label class="d-flex align-items-center gap-2 py-1" style="cursor:pointer">
+                      <input class="form-check-input mt-0" type="checkbox" name="members" value="{{ r.pk }}">
+                      <span class="text-truncate">{{ r.display_name }}</span><span class="house-chip ms-auto">{{ r.house }}</span>
+                    </label>
+                  {% endfor %}
+                </div>
+                <button class="btn btn-soft btn-sm">Add selected</button>
+              </form>
+            {% endif %}
+            <form method="post" action="{% url 'group_leave' group.pk %}" onsubmit="return confirm('Leave this group?')">
+              {% csrf_token %}
+              <button class="btn btn-sm btn-outline-danger"><i class="bi bi-box-arrow-right me-1"></i>Leave group</button>
+            </form>
+          </div>
+        </div>
+        {% endif %}
+
+        <div id="chat" class="chat-box" data-api="{{ api }}" data-last="{{ last_id }}" data-group="{% if group %}1{% endif %}">
+          {% for m in chat %}<div class="bubble {% if m.sender_id == user.id %}mine{% else %}theirs{% endif %}" data-id="{{ m.id }}">{% if group and m.sender_id != user.id %}<div class="who">{{ m.sender.first_name|default:m.sender.username }}</div>{% endif %}{% if m.image %}<img class="pic" src="{{ m.image.url }}" alt="Photo" loading="lazy">{% endif %}{% if m.audio %}<audio controls preload="none" src="{{ m.audio.url }}"></audio>{% endif %}{% if m.body %}<div class="txt">{{ m.body }}</div>{% endif %}<div class="meta">{{ m.created_at|date:"j M, g:i A" }}</div></div>{% endfor %}
+        </div>
+
+        <div id="err" class="small text-danger px-3 pb-1" style="display:none"></div>
+
+        <!-- recording bar (shown while a voice note is being recorded) -->
+        <div id="rec" class="rec-bar p-3 border-top">
+          <span class="rec-dot"></span><span class="fw-semibold small">Recording… <span id="rec-time">0:00</span></span>
+          <button type="button" id="rec-cancel" class="icon-btn ms-auto"><i class="bi bi-trash3 me-1"></i>Cancel</button>
+          <button type="button" id="rec-send" class="btn btn-wb btn-sm px-3"><i class="bi bi-send-fill me-1"></i>Send</button>
+        </div>
+
+        <form id="send" class="d-flex gap-2 align-items-center p-3 border-top" autocomplete="off">
+          {% csrf_token %}
+          <label class="icon-btn mb-0" for="pic" title="Send a photo" role="button"><i class="bi bi-image fs-5"></i></label>
+          <input id="pic" type="file" accept="image/*" class="d-none">
+          <input id="msg" class="form-control" maxlength="1000" placeholder="Type a message…">
+          <button type="button" id="mic" class="icon-btn" title="Record a voice note"><i class="bi bi-mic-fill fs-5"></i></button>
+          <button id="go" class="btn btn-wb px-3" aria-label="Send"><i class="bi bi-send-fill"></i></button>
+        </form>
+      </div>
+    {% else %}
+      <div class="card-wb p-5 text-center text-muted mt-md-5">
+        <i class="bi bi-chat-heart fs-1 d-block mb-2"></i>
+        Pick a conversation, or say hi to someone from <a href="{% url 'directory' %}">Neighbours</a>.
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endwith %}
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{% if peer or group %}
+<script>
+(function () {
+  var chat = document.getElementById('chat'), form = document.getElementById('send'), input = document.getElementById('msg');
+  var api = chat.dataset.api, after = parseInt(chat.dataset.last || '0', 10), isGroup = !!chat.dataset.group;
+  var csrf = form.querySelector('[name=csrfmiddlewaretoken]').value;
+  var errBox = document.getElementById('err'), seen = {};
+  chat.querySelectorAll('[data-id]').forEach(function (e) { seen[e.dataset.id] = true; });
+
+  function toBottom() { chat.scrollTop = chat.scrollHeight; }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
+  function showErr(t) { errBox.textContent = t || ''; errBox.style.display = t ? 'block' : 'none'; }
+
+  // Everything user-supplied goes in via textContent / src, never innerHTML.
+  function render(m) {
+    if (seen[m.id]) return;
+    seen[m.id] = true;
+    var d = el('div', 'bubble ' + (m.mine ? 'mine' : 'theirs')); d.dataset.id = m.id;
+    if (isGroup && !m.mine) d.appendChild(el('div', 'who', m.sender));
+    if (m.image) { var i = el('img', 'pic'); i.src = m.image; i.alt = 'Photo'; d.appendChild(i); }
+    if (m.audio) { var a = el('audio'); a.controls = true; a.preload = 'none'; a.src = m.audio; d.appendChild(a); }
+    if (m.body) d.appendChild(el('div', 'txt', m.body));
+    d.appendChild(el('div', 'meta', m.time));
+    chat.appendChild(d);
+  }
+
+  chat.addEventListener('click', function (e) { if (e.target.classList.contains('pic')) window.open(e.target.src, '_blank'); });
+
+  function poll() {
+    if (document.hidden) return;
+    fetch(api + '?after=' + after, { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j.messages) return;
+        j.messages.forEach(function (m) { render(m); if (m.id > after) after = m.id; });
+        if (j.messages.length) toBottom();
+      }).catch(function () {});
+  }
+  setInterval(poll, 3000);
+
+  function send(fd, onFail) {
+    showErr('');
+    return fetch(api, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRFToken': csrf }, body: fd })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok) { showErr(res.j.error || 'Could not send.'); if (onFail) onFail(); return; }
+        res.j.messages.forEach(function (m) { render(m); if (m.id > after) after = m.id; });
+        toBottom();
+      })
+      .catch(function () { showErr('Network problem. Please try again.'); if (onFail) onFail(); });
+  }
+
+  // ---- text ----
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var body = input.value.trim();
+    if (!body) return;
+    input.value = '';
+    var fd = new FormData(); fd.append('body', body);
+    send(fd, function () { input.value = body; });
+  });
+
+  // ---- photo (uploads immediately; any typed text becomes the caption) ----
+  var pic = document.getElementById('pic');
+  pic.addEventListener('change', function () {
+    var f = pic.files[0]; if (!f) return;
+    var fd = new FormData(); fd.append('image', f); fd.append('body', input.value.trim());
+    input.value = ''; pic.value = '';
+    send(fd);
+  });
+
+  // ---- voice notes ----
+  var mic = document.getElementById('mic'), rec = document.getElementById('rec'), recTime = document.getElementById('rec-time');
+  var recorder = null, chunks = [], stream = null, timer = null, started = 0, cancelled = false;
+  var MIME = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'].filter(function (t) {
+    return window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t);
+  })[0];
+
+  function resetRec() {
+    clearInterval(timer); rec.style.display = 'none'; form.style.display = '';
+    if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+    stream = null; recorder = null; chunks = [];
+  }
+
+  mic.addEventListener('click', function () {
+    if (!window.MediaRecorder || !navigator.mediaDevices) {
+      showErr('Voice notes need a secure (https) connection and a recent browser.'); return;
+    }
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (s) {
+      stream = s; chunks = []; cancelled = false;
+      recorder = MIME ? new MediaRecorder(s, { mimeType: MIME }) : new MediaRecorder(s);
+      recorder.ondataavailable = function (e) { if (e.data.size) chunks.push(e.data); };
+      recorder.onstop = function () {
+        var type = (recorder && recorder.mimeType) || MIME || 'audio/webm';
+        var ext = type.indexOf('mp4') > -1 ? 'm4a' : type.indexOf('ogg') > -1 ? 'ogg' : 'webm';
+        var blob = new Blob(chunks, { type: type.split(';')[0] });
+        var secs = (Date.now() - started) / 1000;
+        resetRec();
+        if (cancelled || secs < 1) return;
+        var fd = new FormData(); fd.append('audio', blob, 'voice.' + ext);
+        send(fd);
+      };
+      recorder.start();
+      started = Date.now(); recTime.textContent = '0:00';
+      timer = setInterval(function () {
+        var s = Math.floor((Date.now() - started) / 1000);
+        recTime.textContent = Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+        if (s >= 180) document.getElementById('rec-send').click();   // cap at 3 minutes
+      }, 250);
+      form.style.display = 'none'; rec.style.display = 'flex';
+    }).catch(function () { showErr('Microphone access was blocked. Allow it in your browser settings to send voice notes.'); });
+  });
+  document.getElementById('rec-send').addEventListener('click', function () { if (recorder && recorder.state !== 'inactive') recorder.stop(); });
+  document.getElementById('rec-cancel').addEventListener('click', function () { cancelled = true; if (recorder && recorder.state !== 'inactive') recorder.stop(); else resetRec(); });
+
+  toBottom();
+})();
+</script>
+{% endif %}
+{% endblock %}

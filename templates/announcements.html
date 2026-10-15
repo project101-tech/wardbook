@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Notices{% endblock %}
+
+{% block content %}
+<h1 class="page-title h3 mb-1">Notices</h1>
+<p class="text-muted">Official updates, events and rules from the committee.</p>
+
+{% for n in notices %}
+  <article id="notice-{{ n.id }}" class="card-wb p-3 p-md-4 mb-3"
+           style="border-left: 5px solid {% if n.category == 'urgent' %}var(--wb-red){% elif n.category == 'rule' %}var(--wb-amber){% else %}var(--wb-accent){% endif %};">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <span class="badge rounded-pill {% if n.category == 'urgent' %}text-bg-danger{% elif n.category == 'rule' %}text-bg-warning{% elif n.category == 'event' %}text-bg-primary{% else %}text-bg-secondary{% endif %}">{{ n.get_category_display }}</span>
+      {% if n.is_pinned %}<span class="small text-muted"><i class="bi bi-pin-angle-fill"></i> Pinned</span>{% endif %}
+      <small class="text-muted ms-auto">{{ n.created_at|date:"j M Y" }}</small>
+    </div>
+    <h2 class="h5 fw-bold">{{ n.title }}</h2>
+
+    {% if n.category == 'event' %}
+      <div class="d-flex flex-wrap gap-3 my-2 small fw-semibold">
+        <span><i class="bi bi-calendar-event me-1"></i>{{ n.event_date|date:"D, j M Y · g:i A" }}</span>
+        {% if n.venue %}<span><i class="bi bi-geo-alt-fill me-1"></i>{{ n.venue }}</span>{% endif %}
+      </div>
+    {% endif %}
+
+    <div style="overflow-wrap:anywhere">{{ n.body|urlize|linebreaks }}</div>
+
+    {% for pr in n.payment_requests.all %}
+      <a class="btn btn-soft w-100 text-start mt-2" href="{% url 'payments' %}#pay-{{ pr.id }}">
+        <i class="bi bi-wallet2 me-1"></i>{{ pr.title }}{% if pr.amount %} · ₹{{ pr.amount|floatformat:"-2" }}{% endif %}
+        <span class="float-end">Pay <i class="bi bi-chevron-right"></i></span>
+      </a>
+    {% endfor %}
+
+    {% if n.category == 'event' %}
+      {% if n.is_upcoming %}
+        <form method="post" action="{% url 'respond' n.id %}" class="d-flex gap-2 mt-3">
+          {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <button name="answer" value="going" class="btn btn-soft flex-fill {% if n.my == 'going' %}on{% endif %}">
+            <i class="bi bi-check-circle{% if n.my == 'going' %}-fill{% endif %} me-1"></i>{% if n.my == 'going' %}You're going{% else %}I'll come{% endif %}
+          </button>
+          <button name="answer" value="not_going" class="btn btn-soft flex-fill {% if n.my == 'not_going' %}on-no{% endif %}">
+            <i class="bi bi-x-circle{% if n.my == 'not_going' %}-fill{% endif %} me-1"></i>{% if n.my == 'not_going' %}You can't make it{% else %}Can't make it{% endif %}
+          </button>
+        </form>
+        {% if n.my %}<div class="small text-muted mt-1">Changed your mind? Tap your answer again to undo it, or tap the other button to switch.</div>{% endif %}
+      {% else %}
+        <div class="small text-muted mt-3"><i class="bi bi-clock-history me-1"></i>This event has already started, so RSVPs are closed.</div>
+      {% endif %}
+      <div class="small text-muted mt-2">{{ n.n_going }} going · {{ n.n_no }} can't make it</div>
+      {% if n.going_list %}
+        <details class="small mt-1">
+          <summary class="text-muted" role="button">Who's coming</summary>
+          <div class="mt-2 d-flex flex-wrap gap-1">
+            {% for r in n.going_list %}<span class="house-chip">{{ r.user.display_name }}{% if r.user.house %} · {{ r.user.house }}{% endif %}</span>{% endfor %}
+          </div>
+        </details>
+      {% endif %}
+
+    {% elif n.category == 'rule' %}
+      <form method="post" action="{% url 'respond' n.id %}" class="d-flex align-items-center gap-3 mt-3">
+        {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button name="answer" value="ack" class="btn btn-soft {% if n.my == 'ack' %}on{% endif %}">
+          <i class="bi bi-hand-thumbs-up{% if n.my == 'ack' %}-fill{% endif %} me-1"></i>{% if n.my == 'ack' %}Acknowledged{% else %}I've read this{% endif %}
+        </button>
+        <span class="small text-muted">{{ n.n_ack }} resident{{ n.n_ack|pluralize }} acknowledged{% if n.my == 'ack' %} · tap again to undo{% endif %}</span>
+      </form>
+    {% endif %}
+  </article>
+{% empty %}
+  <div class="card-wb p-5 text-center text-muted">
+    <i class="bi bi-megaphone fs-1 d-block mb-2"></i>No notices yet.
+  </div>
+{% endfor %}
+{% endblock %}

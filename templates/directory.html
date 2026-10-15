@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Neighbours{% endblock %}
+
+{% block content %}
+<h1 class="page-title h3 mb-1">Neighbours</h1>
+<p class="text-muted">Verified residents of {{ SOCIETY_NAME }}.</p>
+
+<form method="get" class="mb-3">
+  <div class="input-group">
+    <span class="input-group-text bg-white" style="border-radius:12px 0 0 12px"><i class="bi bi-search"></i></span>
+    <input class="form-control" style="border-radius:0 12px 12px 0" name="q" value="{{ q }}" placeholder="Search by name or house number">
+  </div>
+</form>
+
+{% for r in residents %}
+  <div class="card-wb p-3 mb-2 d-flex align-items-center gap-3">
+    {{ r.avatar_html }}
+    <div class="flex-grow-1 min-w-0 lh-sm">
+      <div class="fw-bold">{{ r.display_name }} <span class="house-chip">House {{ r.house }}</span></div>
+      {% if r.profile.bio %}<small class="text-muted">{{ r.profile.bio }}</small>{% endif %}
+    </div>
+    {% if r.pk != user.pk %}
+      <a class="btn btn-soft btn-sm" href="{% url 'conversation' r.pk %}"><i class="bi bi-chat-dots me-1"></i>Message</a>
+    {% else %}
+      <span class="small text-muted">You</span>
+    {% endif %}
+  </div>
+{% empty %}
+  <div class="card-wb p-5 text-center text-muted">
+    <i class="bi bi-people fs-1 d-block mb-2"></i>No residents found.
+  </div>
+{% endfor %}
+{% endblock %}
