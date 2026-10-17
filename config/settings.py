@@ -23,6 +23,8 @@ if RENDER_HOST:
     CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_HOST}")
 
 USE_CLOUDINARY = bool(os.environ.get("CLOUDINARY_URL"))
+if not DEBUG and not USE_CLOUDINARY:
+    raise RuntimeError("CLOUDINARY_URL must be set in production so resident uploads are not lost or broken on Render.")
 
 INSTALLED_APPS = [
     "django.contrib.admin",

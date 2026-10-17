@@ -46,7 +46,7 @@ Direct messages are intentionally *not* in the admin, so private chats can't be 
 4. When asked, paste `CLOUDINARY_URL`. Edit `SOCIETY_NAME` in `render.yaml` first.
 5. After the first deploy, open the service **Shell** tab and run `python manage.py createsuperuser`.
 
-Without `CLOUDINARY_URL`, uploads go to the server's disk, which Render wipes on every deploy. Always set it in production.
+`CLOUDINARY_URL` is required in production. Without it, the app stops during startup instead of silently producing broken images, because Render's local disk is not persistent across deploys. Existing images that were uploaded to an old Render disk must be uploaded to Cloudinary separately; they cannot be recovered from Git because `media/` is intentionally ignored.
 
 ## Files
 
