@@ -7,3 +7,10 @@ psycopg[binary]
 cloudinary
 django-cloudinary-storage
 pywebpush
+
+channels[daphne]
+channels-redis
+
+
+channels[daphne]
+channels-redis
