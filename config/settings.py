@@ -22,7 +22,11 @@ if RENDER_HOST:
     ALLOWED_HOSTS.append(RENDER_HOST)
     CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_HOST}")
 
-USE_CLOUDINARY = bool(os.environ.get("CLOUDINARY_URL"))
+cloudinary_url = os.environ.get("CLOUDINARY_URL", "").strip()
+if cloudinary_url.startswith("CLOUDINARY_URL="):
+    cloudinary_url = cloudinary_url.split("=", 1)[1].strip().strip('"').strip("'")
+    os.environ["CLOUDINARY_URL"] = cloudinary_url
+USE_CLOUDINARY = bool(cloudinary_url)
 if not DEBUG and not USE_CLOUDINARY:
     raise RuntimeError("CLOUDINARY_URL must be set in production so resident uploads are not lost or broken on Render.")
 
