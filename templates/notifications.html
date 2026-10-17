@@ -20,19 +20,19 @@ function keyBytes(key) { var pad = '='.repeat((4 - key.length % 4) % 4), raw = a
 async function checkPush() {
   if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) { pushStatus.textContent='This browser does not support push alerts.'; return; }
   if (Notification.permission === 'denied') { pushStatus.textContent='Push alerts are blocked. Allow notifications for this site in Chrome site settings.'; document.getElementById('push-label').textContent='Push blocked'; return; }
-  if (!'{{ VAPID_PUBLIC_KEY }}') { pushStatus.textContent='Push setup is missing on the server. An administrator must add VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in Render.'; document.getElementById('push-label').textContent='Server setup needed'; pushButton.disabled=true; return; }
+  if (!'{{ PUSH_CONFIGURED|yesno:"1," }}') { pushStatus.textContent='Push setup is missing on the server. An administrator must add VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in Render.'; document.getElementById('push-label').textContent='Server setup needed'; pushButton.disabled=true; return; }
   var registration = await navigator.serviceWorker.ready, subscription = await registration.pushManager.getSubscription();
   if (subscription) { pushStatus.textContent='Push alerts are enabled on this device.'; document.getElementById('push-label').textContent='Push enabled'; pushButton.disabled=true; }
   else { pushStatus.textContent='Enable alerts to receive DMs, mentions, game invites, and Town Square updates when this tab is closed.'; document.getElementById('push-label').textContent='Enable push alerts'; }
 }
 if (pushButton) pushButton.addEventListener('click', async function () {
   try {
-    if (!'{{ VAPID_PUBLIC_KEY }}') return checkPush();
+    if (!'{{ PUSH_CONFIGURED|yesno:"1," }}') return checkPush();
     var registration = await navigator.serviceWorker.ready, permission = await Notification.requestPermission();
     if (permission !== 'granted') return checkPush();
     var subscription = await registration.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: keyBytes('{{ VAPID_PUBLIC_KEY }}')});
     var response = await fetch('{% url 'push_subscribe' %}', {method:'POST', credentials:'same-origin', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body:JSON.stringify(subscription)});
-    if (!response.ok) throw new Error('subscription failed');
+    if (!response.ok) { var error = await response.json().catch(function () { return {}; }); throw new Error(error.error || 'subscription failed'); }
     await checkPush();
   } catch (error) { pushStatus.textContent='Could not enable push alerts. Check browser permissions and try again.'; }
 });

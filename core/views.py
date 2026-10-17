@@ -52,7 +52,8 @@ def group_memberships(user):
 # Context processor (registered in settings): runs for every template
 # --------------------------------------------------------------------------
 def nav(request):
-    ctx = {"SOCIETY_NAME": settings.SOCIETY_NAME, "VAPID_PUBLIC_KEY": settings.VAPID_PUBLIC_KEY}
+    ctx = {"SOCIETY_NAME": settings.SOCIETY_NAME, "VAPID_PUBLIC_KEY": settings.VAPID_PUBLIC_KEY,
+           "PUSH_CONFIGURED": bool(settings.VAPID_PUBLIC_KEY and settings.VAPID_PRIVATE_KEY)}
     if request.user.is_authenticated:
         dms = Message.objects.filter(recipient=request.user, is_read=False).count()
         ctx["unread_dms"] = dms + sum(m.unread for m in group_memberships(request.user))
@@ -63,16 +64,21 @@ def nav(request):
 def notify(user, title, body="", url="", kind=Notification.Kind.SYSTEM, actor=None):
     if user and user != actor:
         Notification.objects.create(recipient=user, actor=actor, kind=kind, title=title, body=body, url=url)
-        if settings.VAPID_PRIVATE_KEY:
-            try:
-                from pywebpush import webpush
-                for subscription in user.push_subscriptions.all():
+        if settings.VAPID_PRIVATE_KEY and settings.VAPID_PUBLIC_KEY:
+            from pywebpush import WebPushException, webpush
+            for subscription in user.push_subscriptions.all():
+                try:
                     webpush({"endpoint": subscription.endpoint, "keys": {"p256dh": subscription.p256dh, "auth": subscription.auth}},
                             json.dumps({"title": title, "body": body, "url": url}),
                             vapid_private_key=settings.VAPID_PRIVATE_KEY,
-                            vapid_claims={"sub": settings.VAPID_CLAIMS_EMAIL})
-            except Exception:
-                pass
+                            vapid_claims={"sub": settings.VAPID_CLAIMS_EMAIL}, ttl=86400, urgency="high")
+                except WebPushException as exc:
+                    response = getattr(exc, "response", None)
+                    if response is not None and response.status_code in (404, 410):
+                        subscription.delete()
+                    logger.exception("Web Push delivery failed for user %s", user.pk)
+                except Exception:
+                    logger.exception("Unexpected Web Push failure for user %s", user.pk)
 
 
 def notify_mentions(text, actor, url, title="You were mentioned"):
@@ -1155,17 +1161,23 @@ def presence(request):
 @login_required
 @require_POST
 def push_subscribe(request):
+    if not (settings.VAPID_PUBLIC_KEY and settings.VAPID_PRIVATE_KEY):
+        return JsonResponse({"ok": False, "error": "Push notifications are not configured on the server."}, status=503)
     data = request.POST or request.body
     if isinstance(data, bytes):
         import json
-        data = json.loads(data or "{}")
+        try:
+            data = json.loads(data or "{}")
+        except ValueError:
+            return JsonResponse({"ok": False, "error": "Invalid push subscription."}, status=400)
     endpoint = data.get("endpoint")
     keys = data.get("keys", {})
-    if endpoint and keys.get("p256dh") and keys.get("auth"):
-        PushSubscription.objects.update_or_create(endpoint=endpoint, defaults={"user": request.user,
-            "p256dh": keys["p256dh"], "auth": keys["auth"]})
-    return JsonResponse({"ok": True})
+    if not endpoint or not keys.get("p256dh") or not keys.get("auth"):
+        return JsonResponse({"ok": False, "error": "Incomplete push subscription."}, status=400)
+    subscription, _ = PushSubscription.objects.update_or_create(endpoint=endpoint, defaults={"user": request.user,
+        "p256dh": keys["p256dh"], "auth": keys["auth"]})
+    return JsonResponse({"ok": True, "subscription_id": subscription.pk})
 
 
 def service_worker(request):
-    return HttpResponse("""self.addEventListener('push', event => { const data = event.data ? event.data.json() : {}; event.waitUntil(self.registration.showNotification(data.title || 'Wardbook', { body: data.body || '', data: { url: data.url || '/' } })); }); self.addEventListener('notificationclick', event => { event.notification.close(); event.waitUntil(clients.openWindow(event.notification.data.url)); });""", content_type="application/javascript")
+    return HttpResponse("""self.addEventListener('push', event => { let data = {}; try { data = event.data ? event.data.json() : {}; } catch (_) { data = {body: event.data ? event.data.text() : ''}; } event.waitUntil(self.registration.showNotification(data.title || 'Wardbook', { body: data.body || '', tag: data.tag || 'wardbook', renotify: true, vibrate: [200, 100, 200], data: { url: data.url || '/' } })); }); self.addEventListener('notificationclick', event => { event.notification.close(); event.waitUntil(clients.openWindow(event.notification.data.url)); });""", content_type="application/javascript")
