@@ -1,3 +1,4 @@
+import logging
 import re
 import json
 from decimal import Decimal
@@ -27,6 +28,7 @@ from .models import (Announcement, AnnouncementResponse, ChatGroup, Comment, Com
                      PushSubscription, ResidentProfile)
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 AVAILABLE_GAME_VALUES = {
     GameChallenge.Game.TIC_TAC_TOE,
     GameChallenge.Game.CONNECT_FOUR,
@@ -507,9 +509,16 @@ def profile(request):
     prof, _ = ResidentProfile.objects.get_or_create(user=request.user, defaults={"house_number": "Admin"})
     form = ProfileForm(request.POST or None, request.FILES or None, instance=prof, user=request.user)
     if request.method == "POST" and form.is_valid():
-        form.save()
-        messages.success(request, "Profile updated.")
-        return redirect("profile")
+        try:
+            with transaction.atomic():
+                form.save()
+        except Exception:
+            logger.exception("Profile update failed for user %s", request.user.pk)
+            form.add_error("avatar", "We couldn't upload that image right now. Check the image format and try again.")
+            messages.error(request, "Profile saved except for the image. Please try the upload again.")
+        else:
+            messages.success(request, "Profile updated.")
+            return redirect("profile")
     return render(request, "profile.html", {
         "form": form,
         "my_posts": Post.objects.filter(author=request.user).count(),
