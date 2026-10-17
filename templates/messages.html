@@ -127,13 +127,7 @@
         </div>
         {% endif %}
 
-        <div id="chat" class="chat-box"
-     data-api="{{ api }}"
-     data-last="{{ last_id }}"
-     data-group="{% if group %}1{% endif %}"
-     data-peer="{% if peer %}{{ peer.pk }}{% endif %}"
-     data-user="{{ request.user.pk }}"
-     data-group-id="{% if group %}{{ group.pk }}{% endif %}">
+        <div id="chat" class="chat-box" data-api="{{ api }}" data-last="{{ last_id }}" data-group="{% if group %}1{% endif %}">
           {% for m in chat %}<div class="bubble {% if m.sender_id == user.id %}mine{% else %}theirs{% endif %}" data-id="{{ m.id }}">{% if group and m.sender_id != user.id %}<div class="who">{{ m.sender.first_name|default:m.sender.username }}</div>{% endif %}{% if m.image %}<img class="pic" src="{{ m.image.url }}" alt="Photo" loading="lazy">{% endif %}{% if m.audio %}<audio controls preload="none" src="{{ m.audio.url }}"></audio>{% endif %}{% if m.body %}<div class="txt">{{ m.body }}</div>{% endif %}<div class="meta">{{ m.created_at|date:"j M, g:i A" }}</div></div>{% endfor %}
         </div>
 
