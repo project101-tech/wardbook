@@ -2,6 +2,8 @@ import logging
 import re
 import json
 from decimal import Decimal
+from .realtime import send_user_event
+from .realtime import send_user_event
 
 from django import forms
 from django.conf import settings
@@ -650,17 +652,75 @@ def post_message(request, **target):
         TypingIndicator.objects.filter(thread_key=thread_key_for_dm(request.user, target["recipient"]), user=request.user).delete()
     elif target.get("group"):
         TypingIndicator.objects.filter(thread_key=f"group-{target['group'].pk}", user=request.user).delete()
-    m = Message.objects.create(sender=request.user, body=d["body"], image=d["image"] or "",
-                               document=d["document"] or "", audio=d["audio"] or "", **target)
+    
+    m = Message.objects.create(
+        sender=request.user,
+        body=d["body"],
+        image=d["image"] or "",
+        document=d["document"] or "",
+        audio=d["audio"] or "",
+        **target,
+    )
+
+    # Notify the recipient(s) after the database commit.
+    payload = {
+        "type": "new_message",
+        "id": m.id,
+        "sender_id": request.user.id,
+        "recipient_id": m.recipient_id,
+        "group_id": m.group_id,
+        "body": m.body,
+        "preview": m.preview,
+        "time": fmt_time(m.created_at),
+        "image": m.image.url if m.image else "",
+        "document": m.document.url if m.document else "",
+        "audio": m.audio.url if m.audio else "",
+        "sender": m.sender.display_name
+    }
+
     if m.recipient_id:
-        notify(m.recipient, f"New message from {request.user.display_name}", m.preview,
-               reverse("conversation", args=[request.user.pk]), Notification.Kind.MESSAGE, request.user)
+        recipient_ids = [m.recipient_id]
+    else:
+        recipient_ids = list(
+            m.group.members.exclude(pk=request.user.pk)
+            .values_list("pk", flat=True)
+        )
+
+    def publish_message():
+        for user_id in set(recipient_ids):
+            send_user_event(user_id, payload)
+
+    transaction.on_commit(publish_message)
+
+    if m.recipient_id:
+        notify(
+            m.recipient,
+            f"New message from {request.user.display_name}",
+            m.preview,
+            reverse("conversation", args=[request.user.pk]),
+            Notification.Kind.MESSAGE,
+            request.user,
+        )
     else:
         for member in m.group.members.exclude(pk=request.user.pk):
-            notify(member, f"New message in {m.group.name}", m.preview,
-                   reverse("group", args=[m.group_id]), Notification.Kind.MESSAGE, request.user)
-    notify_mentions(m.body, request.user, reverse("conversation", args=[m.recipient_id]) if m.recipient_id else reverse("group", args=[m.group_id]))
+            notify(
+                member,
+                f"New message in {m.group.name}",
+                m.preview,
+                reverse("group", args=[m.group_id]),
+                Notification.Kind.MESSAGE,
+                request.user,
+            )
+
+    notify_mentions(
+        m.body,
+        request.user,
+        reverse("conversation", args=[m.recipient_id])
+        if m.recipient_id else reverse("group", args=[m.group_id]),
+    )
+
     return JsonResponse({"messages": [as_json(m, request.user)]})
+
 
 
 def after_param(request):

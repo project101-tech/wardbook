@@ -104,14 +104,14 @@
         <a class="wb-toplink {% if here == 'directory' %}active{% endif %}" href="{% url 'directory' %}">Neighbours</a>
         <a class="wb-toplink {% if here == 'communities' %}active{% endif %}" href="{% url 'communities' %}">Communities</a>
         <a class="wb-toplink {% if here == 'games' %}active{% endif %}" href="{% url 'games' %}">Games</a>
-        <a class="wb-toplink {% if here == 'inbox' or here == 'conversation' or here == 'group' %}active{% endif %}" href="{% url 'inbox' %}">Messages{% if unread_dms %} <span class="wb-badge" style="position:static;margin-left:2px">{{ unread_dms }}</span>{% endif %}</a>
-        <a class="wb-toplink {% if here == 'notifications' %}active{% endif %}" href="{% url 'notifications' %}" title="Notifications"><i class="bi bi-bell-fill"></i>{% if unread_notifications %} <span class="wb-badge" style="position:static;margin-left:2px">{{ unread_notifications }}</span>{% endif %}</a>
+        <a class="wb-toplink {% if here == 'inbox' or here == 'conversation' or here == 'group' %}active{% endif %}" data-live-count="messages" href="{% url 'inbox' %}">Messages{% if unread_dms %} <span class="wb-badge" style="position:static;margin-left:2px">{{ unread_dms }}</span>{% endif %}</a>
+        <a class="wb-toplink {% if here == 'notifications' %}active{% endif %}"  data-live-count="notifications" href="{% url 'notifications' %}" title="Notifications"><i class="bi bi-bell-fill"></i>{% if unread_notifications %} <span class="wb-badge" style="position:static;margin-left:2px">{{ unread_notifications }}</span>{% endif %}</a>
         <a class="wb-toplink {% if here == 'profile' %}active{% endif %}" href="{% url 'profile' %}">{{ user.first_name|default:user.username }}</a>
         {% if user.is_staff %}<a class="wb-toplink" href="/admin/" title="Control room"><i class="bi bi-gear-fill"></i></a>{% endif %}
       </nav>
       <div class="d-md-none">
         <a class="wb-toplink" href="{% url 'directory' %}" title="Neighbours"><i class="bi bi-people-fill"></i></a>
-        <a class="wb-toplink" href="{% url 'notifications' %}" title="Notifications"><i class="bi bi-bell-fill"></i>{% if unread_notifications %}<span class="wb-badge">{{ unread_notifications }}</span>{% endif %}</a>
+        <a class="wb-toplink" data-live-count="notifications" href="{% url 'notifications' %}" title="Notifications"><i class="bi bi-bell-fill"></i>{% if unread_notifications %}<span class="wb-badge">{{ unread_notifications }}</span>{% endif %}</a>
         {% if user.is_staff %}<a class="wb-toplink" href="/admin/" title="Control room"><i class="bi bi-gear-fill"></i></a>{% endif %}
       </div>
     </div>
@@ -130,11 +130,11 @@
     <a class="wb-tab {% if here == 'feed' %}active{% endif %}" href="{% url 'feed' %}"><i class="bi bi-house-heart{% if here == 'feed' %}-fill{% endif %}"></i>Home</a>
     <a class="wb-tab {% if here == 'announcements' %}active{% endif %}" href="{% url 'announcements' %}"><i class="bi bi-megaphone{% if here == 'announcements' %}-fill{% endif %}"></i>Notices</a>
     <a class="wb-tab {% if here == 'payments' %}active{% endif %}" href="{% url 'payments' %}"><i class="bi bi-wallet2"></i>Pay</a>
-    <a class="wb-tab {% if here == 'inbox' or here == 'conversation' or here == 'group' %}active{% endif %}" href="{% url 'inbox' %}"><i class="bi bi-chat-dots{% if here == 'inbox' or here == 'conversation' or here == 'group' %}-fill{% endif %}"></i>Chat{% if unread_dms %}<span class="wb-badge">{{ unread_dms }}</span>{% endif %}</a>
+    <a class="wb-tab {% if here == 'inbox' or here == 'conversation' or here == 'group' %}active{% endif %}"  data-live-count="messages" href="{% url 'inbox' %}"><i class="bi bi-chat-dots{% if here == 'inbox' or here == 'conversation' or here == 'group' %}-fill{% endif %}"></i>Chat{% if unread_dms %}<span class="wb-badge">{{ unread_dms }}</span>{% endif %}</a>
     <a class="wb-tab {% if here == 'games' or here == 'game_play' %}active{% endif %}" href="{% url 'games' %}"><i class="bi bi-controller"></i>Games</a>
     <a class="wb-tab {% if here == 'communities' or here == 'community_detail' %}active{% endif %}" href="{% url 'communities' %}"><i class="bi bi-people{% if here == 'communities' or here == 'community_detail' %}-fill{% endif %}"></i>Groups</a>
     <a class="wb-tab {% if here == 'directory' %}active{% endif %}" href="{% url 'directory' %}"><i class="bi bi-person-lines-fill"></i>Neighbours</a>
-    <a class="wb-tab {% if here == 'notifications' %}active{% endif %}" href="{% url 'notifications' %}"><i class="bi bi-bell{% if here == 'notifications' %}-fill{% endif %}"></i>Alerts{% if unread_notifications %}<span class="wb-badge">{{ unread_notifications }}</span>{% endif %}</a>
+    <a class="wb-tab {% if here == 'notifications' %}active{% endif %}" data-live-count="notifications" href="{% url 'notifications' %}"><i class="bi bi-bell{% if here == 'notifications' %}-fill{% endif %}"></i>Alerts{% if unread_notifications %}<span class="wb-badge">{{ unread_notifications }}</span>{% endif %}</a>
     <a class="wb-tab {% if here == 'profile' %}active{% endif %}" href="{% url 'profile' %}"><i class="bi bi-person-circle"></i>Me</a>
   </nav>
 {% endif %}
@@ -143,6 +143,89 @@
 {% if user.is_authenticated %}
 <script>
 (function () { function beat() { fetch('{% url "presence" %}', {method:'POST', credentials:'same-origin', headers:{'X-CSRFToken':'{{ csrf_token }}'}}).catch(function(){}); } beat(); setInterval(beat, 20000); })();
+</script>
+<script>
+
+(function () {
+  if (!document.body) return;
+
+  var scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  var delay = 1000;
+  var socket;
+  var timer;
+
+  function updateBadges(type) {
+    var selectors = {
+      messages: '[data-live-count="messages"]',
+      notifications: '[data-live-count="notifications"]'
+    };
+
+    var links = document.querySelectorAll(selectors[type]);
+    links.forEach(function (link) {
+      var badge = link.querySelector('.wb-badge');
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'wb-badge';
+        link.appendChild(badge);
+      }
+
+      var count = Number(badge.dataset.count || badge.textContent || 0);
+      count += 1;
+      badge.dataset.count = String(count);
+      badge.textContent = count > 99 ? '99+' : String(count);
+      badge.hidden = false;
+    });
+  }
+
+  function connect() {
+    socket = new WebSocket(scheme + '//' + location.host + '/ws/live/');
+
+    socket.onopen = function () {
+      delay = 1000;
+    };
+
+    socket.onmessage = function (event) {
+      var data;
+      try {
+        data = JSON.parse(event.data);
+      } catch (_) {
+        return;
+      }
+
+      if (data.type === 'new_notification') {
+        updateBadges('notifications');
+
+        if (data.kind === 'message') {
+          updateBadges('messages');
+        }
+
+        // Don't inject server-supplied HTML into the page.
+        window.dispatchEvent(new CustomEvent('wardbook:notification', {
+          detail: data
+        }));
+      }
+
+      if (data.type === 'new_message') {
+        updateBadges('messages');
+      }
+    };
+
+    socket.onclose = function () {
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        delay = Math.min(delay * 2, 30000);
+        connect();
+      }, delay);
+    };
+
+    socket.onerror = function () {
+      socket.close();
+    };
+  }
+
+  connect();
+})();
+
 </script>
 {% endif %}
 </body>
