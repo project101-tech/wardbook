@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Notifications{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3"><h1 class="page-title h3 mb-0">Notifications</h1>{% if VAPID_PUBLIC_KEY %}<button id="enable-push" class="btn btn-soft btn-sm"><i class="bi bi-phone me-1"></i>Enable push alerts</button>{% else %}<span class="small text-muted" title="Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in production">Browser push needs administrator setup</span>{% endif %}</div>
+<div class="card-wb overflow-hidden">
+  {% for n in notifications %}
+    <a href="{{ n.url|default:'#' }}" class="d-flex gap-3 p-3 border-bottom text-decoration-none {% if not n.is_read %}bg-light{% endif %}" style="color:inherit">
+      <span class="av" style="background:var(--wb-accent-soft);color:var(--wb-accent)"><i class="bi bi-bell-fill"></i></span>
+      <span class="flex-grow-1"><strong>{{ n.title }}</strong><span class="d-block small text-muted">{{ n.body }}</span><small class="text-muted">{{ n.created_at|timesince }} ago</small></span>
+    </a>
+  {% empty %}<div class="p-5 text-center text-muted"><i class="bi bi-bell-slash fs-1 d-block mb-2"></i>No notifications yet.</div>{% endfor %}
+</div>
+{% endblock %}
+{% block scripts %}<script>
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('{% url 'service_worker' %}');
+var pushButton = document.getElementById('enable-push');
+function keyBytes(key) { var pad = '='.repeat((4 - key.length % 4) % 4), raw = atob((key + pad).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(raw, function (c) { return c.charCodeAt(0); }); }
+if (pushButton) pushButton.addEventListener('click', async function () {
+  var registration = await navigator.serviceWorker.ready;
+  var permission = await Notification.requestPermission();
+  if (permission !== 'granted') return;
+  var subscription = await registration.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: keyBytes('{{ VAPID_PUBLIC_KEY }}')});
+  await fetch('{% url 'push_subscribe' %}', {method:'POST', credentials:'same-origin', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body:JSON.stringify(subscription)});
+  pushButton.textContent = 'Push alerts enabled'; pushButton.disabled = true;
+});
+</script>{% endblock %}

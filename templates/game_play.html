@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}{{ payload.label }}{% endblock %}
+{% block head %}
+<style>
+  .game-board { display:grid; gap:.5rem; max-width:420px; margin:auto; }
+  .ttt { grid-template-columns:repeat(3,1fr); }
+  .ttt button { aspect-ratio:1; font-size:clamp(2rem,10vw,4rem); font-weight:800; }
+  .connect4 { grid-template-columns:repeat(7,1fr); background:#1877f2; padding:.6rem; border-radius:16px; }
+  .connect4 button { aspect-ratio:1; border:0; border-radius:50%; background:#fff; font-size:0; }
+  .connect4 button.x { background:#ef476f; } .connect4 button.o { background:#ffd166; }
+  .snakes { grid-template-columns:repeat(10, 1fr); max-width:500px; gap:0; border:3px solid #333; }
+  .snakes button { aspect-ratio:1; border:1px solid #adb5bd; font-size:.65rem; padding:0; }
+  .snakes button:nth-child(odd) { background:#fff7db; } .snakes button:nth-child(even) { background:#dff3ff; }
+  .snakes .snake-square { background:#ffd9d9 !important; color:#a61e4d; font-weight:800; }
+  .snakes .ladder-square { background:#d8f5e5 !important; color:#087f5b; font-weight:800; }
+  .game-status { min-height:2rem; }
+  .game-layout { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:1rem; align-items:start; }
+  .play-card { min-width:0; overflow:hidden; }
+  .game-controls { display:flex; flex-wrap:wrap; justify-content:center; gap:.5rem; max-width:520px; margin:1rem auto 0; }
+  .game-chat { height:320px; display:flex; flex-direction:column; }
+  .game-chat-log { flex:1; overflow:auto; padding:.65rem; background:#f5f6f8; border-radius:12px; }
+  .game-chat-msg { margin-bottom:.45rem; max-width:90%; font-size:.82rem; }
+  .game-chat-msg.mine { margin-left:auto; text-align:right; }
+  .game-chat-msg span { display:inline-block; padding:.4rem .55rem; border-radius:12px; background:#fff; text-align:left; overflow-wrap:anywhere; }
+  .game-chat-msg.mine span { background:var(--wb-accent); color:#fff; }
+  @media (max-width:767px) { .game-layout { grid-template-columns:1fr; } .game-chat { height:240px; } }
+</style>
+{% endblock %}
+{% block content %}
+<a href="{% url 'games' %}" class="small text-decoration-none"><i class="bi bi-arrow-left"></i> Games</a>
+<div class="game-layout mt-2">
+ <div class="card-wb play-card p-3 p-md-4">
+  <div class="d-flex align-items-center justify-content-between mb-3"><div><h1 class="page-title h3 mb-1">{{ payload.label }}</h1><div class="small text-muted">{{ payload.challenger }} vs {{ payload.opponent }}</div></div><span id="online-state" class="badge text-bg-success">Opponent online</span></div>
+  <div><div id="status" class="game-status text-center fw-semibold mb-2"></div><div id="board" class="game-board"></div><div id="game-controls" class="game-controls"></div><p id="help" class="small text-muted text-center mt-3 mb-0"></p><div id="finished" class="d-none text-center mt-3"><form method="post" action="{% url 'game_rematch' session.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-wb btn-sm"><i class="bi bi-arrow-repeat me-1"></i>Play again</button></form><a href="{% url 'games' %}" class="btn btn-outline-secondary btn-sm ms-1"><i class="bi bi-box-arrow-right me-1"></i>Exit game</a></div></div>
+ </div>
+ <aside class="game-chat card-wb p-2"><div class="small fw-bold px-1 pb-2">In-game chat</div><div id="game-chat-log" class="game-chat-log"></div><form id="game-chat-form" class="d-flex gap-1 pt-2"><input id="game-chat-input" class="form-control form-control-sm" maxlength="500" placeholder="Say something…" autocomplete="off"><button class="btn btn-wb btn-sm" aria-label="Send"><i class="bi bi-send-fill"></i></button></form></aside>
+</div>
+{{ payload|json_script:"game-data" }}
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var data = JSON.parse(document.getElementById('game-data').textContent), board = document.getElementById('board'), controls = document.getElementById('game-controls'), status = document.getElementById('status'), help = document.getElementById('help');
+  var csrf = '{{ csrf_token }}', state = data.state;
+  function cls(token) { return token ? token.toLowerCase() : ''; }
+  function render() {
+    var online = document.getElementById('online-state'); online.textContent = data.opponent_online ? 'Opponent online' : 'Opponent offline'; online.className = 'badge ' + (data.opponent_online ? 'text-bg-success' : 'text-bg-secondary');
+    board.replaceChildren(); controls.replaceChildren(); board.className = 'game-board ' + (data.game === 'tic_tac_toe' ? 'ttt' : data.game === 'connect_four' ? 'connect4' : '');
+    if (data.game === 'tic_tac_toe') state.board.forEach(function (token, i) { var b=document.createElement('button'); b.className='btn btn-light border'; b.textContent=token; b.disabled=!!token || data.turn !== data.you || !data.active; b.onclick=function(){move(i);}; board.appendChild(b); });
+    else if (data.game === 'connect_four') for (var r=0;r<6;r++) for (var c=0;c<7;c++) { var b=document.createElement('button'); b.className=cls(state.board[r][c]); b.disabled=data.turn !== data.you || !data.active; b.onclick=(function (column) { return function () { move(column); }; })(c); board.appendChild(b); }
+    else if (data.game === 'snakes_ladders') { renderSnakes(); }
+    if (!data.active) status.textContent = data.winner ? (data.winner === data.you ? 'You won!' : 'Your neighbour won.') : 'Draw game';
+    else status.textContent = data.turn === data.you ? 'Your turn' : 'Waiting for your neighbour…';
+    if (data.game === 'tic_tac_toe') help.textContent='Tap an empty square to place your mark.';
+    if (data.game === 'connect_four') help.textContent='Tap a column to drop your counter.';
+    if (data.game === 'snakes_ladders') { help.textContent='Roll the die and race to square 100. Land on a ladder bottom to climb or a snake head to slide down.'; if (state.last_jump) status.textContent='You hit a '+state.last_jump.type+': '+state.last_jump.from+' → '+state.last_jump.to+(state.last_roll===6?' · Roll again!':''); else if (state.last_roll===6 && !data.active) status.textContent='Game over'; else if (state.last_roll===6 && data.turn===data.you) status.textContent='You rolled a six. Roll again!'; }
+    document.getElementById('finished').classList.toggle('d-none', data.active);
+  }
+  function renderSnakes() {
+    board.className='game-board snakes'; var squares=[]; for(var row=9;row>=0;row--){var line=[];for(var col=0;col<10;col++)line.push(row*10+(row%2?col:9-col)+1);squares=squares.concat(line);}
+    squares.forEach(function(n){var cell=document.createElement('button');var snake=state.snakes&&state.snakes[String(n)], ladder=state.ladders&&state.ladders[String(n)];cell.className=snake?'snake-square':ladder?'ladder-square':'';var players=(data.players||[]).filter(function(p){return state.positions[String(p.id)]===n;}).map(function(p){return p.id===data.you?'●':'○';}).join('');cell.textContent=n+(snake?' 🐍↓'+snake:ladder?' 🪜↑'+ladder:'')+(players?' '+players:'');cell.disabled=true;board.appendChild(cell);});
+    var dice=document.createElement('button');dice.className='btn btn-wb';dice.textContent=state.dice?'Rolled '+state.dice+' — move':'Roll dice';dice.disabled=data.turn!==data.you||!data.active;dice.onclick=function(){move(-1);};controls.appendChild(dice);
+    var legend=document.createElement('div');legend.className='small text-muted text-center w-100';legend.textContent='Red squares are snake heads · green squares are ladder bottoms · exact 100 wins';controls.appendChild(legend);
+  }
+  function apply(j) { data=j.game; if (data.rematch_url && window.location.pathname !== data.rematch_url) { status.textContent='Starting rematch…'; window.location.href=data.rematch_url; return; } state=data.state; render(); }
+  function send(fd) { fetch('{% url "game_move" session.pk %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:fd}).then(function(r){return r.json();}).then(function(j){if(j.game)apply(j);else if(j.error)status.textContent=j.error;}); }
+  function move(value) { var fd=new FormData(); fd.append('move',value); send(fd); }
+  var chatLog=document.getElementById('game-chat-log'), chatAfter=0;
+  function renderChat(messages) { messages.forEach(function(m){ if(m.id<=chatAfter)return; chatAfter=m.id; var row=document.createElement('div'); row.className='game-chat-msg '+(m.mine?'mine':''); var bubble=document.createElement('span'); bubble.textContent=(m.mine?'You':m.sender)+': '+m.body; row.appendChild(bubble); chatLog.appendChild(row); }); if(messages.length) chatLog.scrollTop=chatLog.scrollHeight; }
+  function pollChat() { fetch('{% url "game_chat" session.pk %}?after='+chatAfter).then(function(r){return r.json();}).then(function(j){renderChat(j.messages||[]);}).catch(function(){}); }
+  document.getElementById('game-chat-form').addEventListener('submit',function(e){e.preventDefault();var input=document.getElementById('game-chat-input'), body=input.value.trim();if(!body)return;var fd=new FormData();fd.append('body',body);input.value='';fetch('{% url "game_chat" session.pk %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:fd}).then(function(r){return r.json();}).then(function(j){renderChat(j.messages||[]);});});
+  setInterval(function(){fetch('{% url "game_state" session.pk %}').then(function(r){return r.json();}).then(function(j){if(j.game)apply(j);}).catch(function(){});},2000);
+  pollChat(); setInterval(pollChat,2000);
+  render();
+})();
+</script>
+{% endblock %}
