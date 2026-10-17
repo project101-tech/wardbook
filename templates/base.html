@@ -36,9 +36,11 @@
 
     /* bottom tab bar (mobile) */
     .wb-tabs { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; background: #fff; border-top: 1px solid var(--wb-line);
-               display: flex; padding: .35rem .25rem calc(.35rem + env(safe-area-inset-bottom)); }
-    .wb-tab { flex: 1; text-align: center; text-decoration: none; color: var(--wb-muted); font-size: .68rem; font-weight: 600;
-              position: relative; padding: .25rem 0; }
+           display: flex; gap: .25rem; overflow-x: auto; white-space: nowrap; padding: .35rem .5rem calc(.35rem + env(safe-area-inset-bottom));
+           scrollbar-width: none; }
+    .wb-tabs::-webkit-scrollbar { display: none; }
+    .wb-tab { flex: 0 0 auto; min-width: 66px; text-align: center; text-decoration: none; color: var(--wb-muted); font-size: .68rem; font-weight: 600;
+          position: relative; padding: .25rem .45rem; border-radius: 10px; }
     .wb-tab i { display: block; font-size: 1.35rem; line-height: 1.2; }
     .wb-tab.active { color: var(--wb-accent); }
     .wb-badge { position: absolute; top: 0; left: 50%; margin-left: 6px; background: var(--wb-red); color: #fff;
@@ -127,6 +129,9 @@
     <a class="wb-tab {% if here == 'announcements' %}active{% endif %}" href="{% url 'announcements' %}"><i class="bi bi-megaphone{% if here == 'announcements' %}-fill{% endif %}"></i>Notices</a>
     <a class="wb-tab {% if here == 'payments' %}active{% endif %}" href="{% url 'payments' %}"><i class="bi bi-wallet2"></i>Pay</a>
     <a class="wb-tab {% if here == 'inbox' or here == 'conversation' or here == 'group' %}active{% endif %}" href="{% url 'inbox' %}"><i class="bi bi-chat-dots{% if here == 'inbox' or here == 'conversation' or here == 'group' %}-fill{% endif %}"></i>Chat{% if unread_dms %}<span class="wb-badge">{{ unread_dms }}</span>{% endif %}</a>
+    <a class="wb-tab {% if here == 'games' or here == 'game_play' %}active{% endif %}" href="{% url 'games' %}"><i class="bi bi-controller{% if here == 'games' or here == 'game_play' %}-fill{% endif %}"></i>Games</a>
+    <a class="wb-tab {% if here == 'communities' or here == 'community_detail' %}active{% endif %}" href="{% url 'communities' %}"><i class="bi bi-people{% if here == 'communities' or here == 'community_detail' %}-fill{% endif %}"></i>Groups</a>
+    <a class="wb-tab {% if here == 'directory' %}active{% endif %}" href="{% url 'directory' %}"><i class="bi bi-person-lines-fill"></i>Neighbours</a>
     <a class="wb-tab {% if here == 'notifications' %}active{% endif %}" href="{% url 'notifications' %}"><i class="bi bi-bell{% if here == 'notifications' %}-fill{% endif %}"></i>Alerts{% if unread_notifications %}<span class="wb-badge">{{ unread_notifications }}</span>{% endif %}</a>
     <a class="wb-tab {% if here == 'profile' %}active{% endif %}" href="{% url 'profile' %}"><i class="bi bi-person-circle"></i>Me</a>
   </nav>
