@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Notifications{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3"><h1 class="page-title h3 mb-0">Notifications</h1>{% if VAPID_PUBLIC_KEY %}<button id="enable-push" class="btn btn-soft btn-sm"><i class="bi bi-phone me-1"></i>Enable push alerts</button>{% else %}<span class="small text-muted" title="Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in production">Browser push needs administrator setup</span>{% endif %}</div>
+<div class="d-flex justify-content-between align-items-center mb-3"><h1 class="page-title h3 mb-0">Notifications</h1><button id="enable-push" class="btn btn-soft btn-sm"><i class="bi bi-phone me-1"></i><span id="push-label">Check push alerts</span></button></div>
+<div id="push-status" class="small text-muted mb-3" role="status"></div>
 <div class="card-wb overflow-hidden">
   {% for n in notifications %}
     <a href="{{ n.url|default:'#' }}" class="d-flex gap-3 p-3 border-bottom text-decoration-none {% if not n.is_read %}bg-light{% endif %}" style="color:inherit">
@@ -14,13 +15,26 @@
 {% block scripts %}<script>
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('{% url 'service_worker' %}');
 var pushButton = document.getElementById('enable-push');
+var pushStatus = document.getElementById('push-status');
 function keyBytes(key) { var pad = '='.repeat((4 - key.length % 4) % 4), raw = atob((key + pad).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(raw, function (c) { return c.charCodeAt(0); }); }
+async function checkPush() {
+  if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) { pushStatus.textContent='This browser does not support push alerts.'; return; }
+  if (Notification.permission === 'denied') { pushStatus.textContent='Push alerts are blocked. Allow notifications for this site in Chrome site settings.'; document.getElementById('push-label').textContent='Push blocked'; return; }
+  if (!'{{ VAPID_PUBLIC_KEY }}') { pushStatus.textContent='Push alerts are not configured on the server yet.'; document.getElementById('push-label').textContent='Push unavailable'; return; }
+  var registration = await navigator.serviceWorker.ready, subscription = await registration.pushManager.getSubscription();
+  if (subscription) { pushStatus.textContent='Push alerts are enabled on this device.'; document.getElementById('push-label').textContent='Push enabled'; pushButton.disabled=true; }
+  else { pushStatus.textContent='Enable alerts to receive DMs, mentions, game invites, and Town Square updates when this tab is closed.'; document.getElementById('push-label').textContent='Enable push alerts'; }
+}
 if (pushButton) pushButton.addEventListener('click', async function () {
-  var registration = await navigator.serviceWorker.ready;
-  var permission = await Notification.requestPermission();
-  if (permission !== 'granted') return;
-  var subscription = await registration.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: keyBytes('{{ VAPID_PUBLIC_KEY }}')});
-  await fetch('{% url 'push_subscribe' %}', {method:'POST', credentials:'same-origin', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body:JSON.stringify(subscription)});
-  pushButton.textContent = 'Push alerts enabled'; pushButton.disabled = true;
+  try {
+    if (!'{{ VAPID_PUBLIC_KEY }}') return checkPush();
+    var registration = await navigator.serviceWorker.ready, permission = await Notification.requestPermission();
+    if (permission !== 'granted') return checkPush();
+    var subscription = await registration.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: keyBytes('{{ VAPID_PUBLIC_KEY }}')});
+    var response = await fetch('{% url 'push_subscribe' %}', {method:'POST', credentials:'same-origin', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body:JSON.stringify(subscription)});
+    if (!response.ok) throw new Error('subscription failed');
+    await checkPush();
+  } catch (error) { pushStatus.textContent='Could not enable push alerts. Check browser permissions and try again.'; }
 });
+checkPush();
 </script>{% endblock %}
