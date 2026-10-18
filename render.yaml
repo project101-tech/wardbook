@@ -12,7 +12,7 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --no-input && python manage.py migrate
-    startCommand: gunicorn config.wsgi:application --workers 2 --timeout 60
+    startCommand: gunicorn config.wsgi:application --worker-class gthread --workers 1 --threads 40 --timeout 60
     healthCheckPath: /login/
     envVars:
       - key: PYTHON_VERSION

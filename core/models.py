@@ -398,6 +398,7 @@ class Message(models.Model):
     reactions = models.JSONField(default=dict, blank=True)
     is_reported = models.BooleanField(default=False)
     is_read = models.BooleanField(default=False)  # DMs only; groups use GroupMember.last_read
+    read_at = models.DateTimeField(null=True, blank=True)  # DMs only: when the recipient saw it ("Seen 4:32 PM")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

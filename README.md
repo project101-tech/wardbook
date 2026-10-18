@@ -20,6 +20,8 @@ Optional: `export SOCIETY_NAME="Your Society Name"` to change the name in the he
 
 For browser push notifications in production, generate a VAPID key pair and set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_CLAIMS_EMAIL` in the deployment environment. Render has placeholders for these variables. Residents then enable push alerts from Notifications; delivery covers DMs, mentions, games, community activity, and Town Square notifications. Without these variables, the in-app notification centre still works but closed-tab phone/desktop push cannot be delivered.
 
+Chat, feed, game and notification updates are instant through a long-poll channel (`core/live.py`), so production must run a single gunicorn process with threads (`--workers 1 --threads 40`, as in `render.yaml`). DM seen receipts are stored in `Message.read_at`. On the Notifications page, "Send a test" reports in plain English why a phone is not receiving pushes (key mismatch, blocked permission, expired device).
+
 ## Day-to-day admin workflow
 
 | Task | Where in /admin/ |

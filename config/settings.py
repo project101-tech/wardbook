@@ -99,6 +99,7 @@ USE_TZ = True
 # ---- Static files (WhiteNoise) and uploads (Cloudinary or local disk) ----
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_DIRS = [BASE_DIR / "static"]  # app icons used in notifications
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
@@ -123,6 +124,7 @@ SOCIETY_NAME = os.environ.get("SOCIETY_NAME", "Our Society")
 VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
 VAPID_CLAIMS_EMAIL = os.environ.get("VAPID_CLAIMS_EMAIL", "mailto:admin@example.com")
+PUSH_ASYNC = os.environ.get("PUSH_ASYNC", "1") == "1"  # send pushes in a background thread (tests set 0)
 
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

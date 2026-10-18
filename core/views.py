@@ -13,15 +13,17 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Exists, IntegerField, OuterRef, Prefetch, Q, Subquery
+from django.db.models import Count, Exists, IntegerField, Max, OuterRef, Prefetch, Q, Subquery
 from django.db.models.functions import Coalesce
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
+from . import live, push
 from .models import (Announcement, AnnouncementResponse, ChatGroup, Comment, Community, CommunityEvent,
                      CommunityMember, CommunityPost, GameChallenge, GameChatMessage, GameParticipant, GameSession, GroupMember, Message, Notification, Payment, PaymentRequest, Post,
                      TypingIndicator,
@@ -58,27 +60,18 @@ def nav(request):
         dms = Message.objects.filter(recipient=request.user, is_read=False).count()
         ctx["unread_dms"] = dms + sum(m.unread for m in group_memberships(request.user))
         ctx["unread_notifications"] = Notification.objects.filter(recipient=request.user, is_read=False).count()
+        ctx["latest_notification_id"] = Notification.objects.filter(recipient=request.user).aggregate(m=Max("id"))["m"] or 0
     return ctx
 
 
 def notify(user, title, body="", url="", kind=Notification.Kind.SYSTEM, actor=None):
+    """Create the in-app notification (it appears live in any open tab) and push it to the user's phones."""
     if user and user != actor:
-        Notification.objects.create(recipient=user, actor=actor, kind=kind, title=title, body=body, url=url)
-        if settings.VAPID_PRIVATE_KEY and settings.VAPID_PUBLIC_KEY:
-            from pywebpush import WebPushException, webpush
-            for subscription in user.push_subscriptions.all():
-                try:
-                    webpush({"endpoint": subscription.endpoint, "keys": {"p256dh": subscription.p256dh, "auth": subscription.auth}},
-                            json.dumps({"title": title, "body": body, "url": url}),
-                            vapid_private_key=settings.VAPID_PRIVATE_KEY,
-                            vapid_claims={"sub": settings.VAPID_CLAIMS_EMAIL}, ttl=86400, urgency="high")
-                except WebPushException as exc:
-                    response = getattr(exc, "response", None)
-                    if response is not None and response.status_code in (404, 410):
-                        subscription.delete()
-                    logger.exception("Web Push delivery failed for user %s", user.pk)
-                except Exception:
-                    logger.exception("Unexpected Web Push failure for user %s", user.pk)
+        n = Notification.objects.create(recipient=user, actor=actor, kind=kind, title=title, body=body, url=url)
+        chat = kind == Notification.Kind.MESSAGE
+        # messages from one chat share a tag, so the phone shows "Rahul (3 new messages)" instead of a pile
+        push.send([user.pk], title, body, url or reverse("notifications"),
+                  tag=f"chat:{url}" if chat and url else f"n{n.pk}", collapse=chat, kind=kind)
 
 
 def notify_mentions(text, actor, url, title="You were mentioned"):
@@ -295,7 +288,10 @@ class MessageForm(forms.Form):
 # Helpers
 # --------------------------------------------------------------------------
 def back(request, anchor=""):
-    """Redirect to the page the form was submitted from (safe), jumping to an anchor."""
+    """Redirect to the page the form was submitted from (safe), jumping to an anchor.
+    Requests made by the page's own JavaScript (header X-Requested-With: fetch) just get a small OK instead."""
+    if request.headers.get("x-requested-with") == "fetch":
+        return JsonResponse({"ok": True})
     nxt = request.POST.get("next", "")
     if not url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()}):
         nxt = reverse("feed")
@@ -352,7 +348,17 @@ def feed(request):
     else:
         form = PostForm()
 
-    posts = (
+    page = Paginator(feed_posts(request.user), 10).get_page(request.GET.get("page"))
+    return render(request, "feed.html", {
+        "form": form,
+        "page": page,
+        "next_url": request.get_full_path(),
+        "latest_notice": Announcement.objects.first(),  # pinned first, then newest
+    })
+
+
+def feed_posts(user):
+    return (
         Post.objects.filter(is_hidden=False)
         .select_related("author__profile")
         .prefetch_related(
@@ -360,16 +366,43 @@ def feed(request):
         )
         .annotate(
             like_count=Count("likes", distinct=True),
-            liked=Exists(Post.likes.through.objects.filter(post_id=OuterRef("pk"), user_id=request.user.pk)),
+            liked=Exists(Post.likes.through.objects.filter(post_id=OuterRef("pk"), user_id=user.pk)),
         )
         .order_by("-created_at")  # annotate(Count) drops Meta.ordering
     )
-    page = Paginator(posts, 10).get_page(request.GET.get("page"))
-    return render(request, "feed.html", {
-        "form": form,
-        "page": page,
-        "latest_notice": Announcement.objects.first(),  # pinned first, then newest
-    })
+
+
+@login_required
+def feed_live(request):
+    """What changed in the Town Square since this tab last looked.
+    ?after=<newest post id on screen> (first page only) -> new posts;
+    ?st=<id>:<comments>:<likes>:<liked>,... for the posts on screen -> the ones whose numbers changed or that were hidden."""
+    nxt = request.GET.get("next", "")
+    if not url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()}):
+        nxt = reverse("feed")
+
+    def html(post):
+        return render_to_string("_post.html", {"post": post, "next_url": nxt}, request=request)
+
+    posts = feed_posts(request.user)
+    out = {"new": [], "upd": [], "gone": []}
+    after = request.GET.get("after", "")
+    if after.isdigit():
+        newest = list(posts.filter(id__gt=int(after))[:20])
+        out["new"] = [{"id": p.id, "html": html(p)} for p in reversed(newest)]  # oldest first, so the newest lands on top
+    state = {}
+    for part in request.GET.get("st", "").split(",")[:40]:
+        bits = part.split(":")
+        if len(bits) == 4 and all(b.isdigit() for b in bits):
+            state[int(bits[0])] = tuple(int(b) for b in bits[1:])
+    if state:
+        seen = set()
+        for p in posts.filter(id__in=list(state)):
+            seen.add(p.id)
+            if (len(p.comments.all()), p.like_count, int(p.liked)) != state[p.id]:
+                out["upd"].append({"id": p.id, "html": html(p)})
+        out["gone"] = [i for i in state if i not in seen]
+    return JsonResponse(out)
 
 
 @login_required
@@ -630,6 +663,50 @@ def thread_key_for_dm(me, other):
     return f"dm-{min(me.pk, other.pk)}-{max(me.pk, other.pk)}"
 
 
+def short_time(dt):
+    dt = timezone.localtime(dt)
+    t = f"{dt.hour % 12 or 12}:{dt:%M} {dt:%p}"
+    return t if dt.date() == timezone.localdate() else f"{dt.day} {dt:%b}, {t}"
+
+
+def clear_chat_alerts(me, url):
+    """Opening a chat also clears its 'new message' alerts, so the bell badge matches what you've actually read."""
+    if Notification.objects.filter(recipient=me, kind=Notification.Kind.MESSAGE, url=url, is_read=False).update(is_read=True):
+        live.bump(live.user_key(me.pk, "n"))
+
+
+def mark_dm_read(me, other):
+    """I'm looking at my chat with `other`: mark their messages as seen (with the time) and tell both sides' tabs."""
+    n = Message.objects.filter(group__isnull=True, sender=other, recipient=me, is_read=False).update(
+        is_read=True, read_at=timezone.now())
+    clear_chat_alerts(me, reverse("conversation", args=[other.pk]))
+    if n:
+        live.bump(live.user_key(other.pk, "c"), live.user_key(me.pk, "c"))  # "Seen" for them, badges for my other tabs
+    return n
+
+
+def dm_receipt(me, other):
+    """Under my newest message: Sent / Seen. Only when that message is the last one in the chat (like Instagram)."""
+    last = thread_qs(me, other).order_by("-id").only("id", "sender_id", "is_read", "read_at").first()
+    if not last or last.sender_id != me.id:
+        return None
+    return {"id": last.id, "seen": last.is_read, "at": short_time(last.read_at) if last.read_at else ""}
+
+
+def group_receipt(me, group):
+    last = Message.objects.filter(group=group).order_by("-id").only("id", "sender_id").first()
+    if not last or last.sender_id != me.id:
+        return None
+    others = GroupMember.objects.filter(group=group).exclude(user=me)
+    seen = list(others.filter(last_read__gte=last.id).select_related("user").order_by("user__first_name"))
+    return {"id": last.id, "seen_by": [m.user.first_name or m.user.username for m in seen], "total": others.count()}
+
+
+def bump_group(group_id):
+    live.bump(*[live.user_key(uid, "c") for uid in
+                GroupMember.objects.filter(group_id=group_id).values_list("user_id", flat=True)])
+
+
 def as_json(m, me):
     return {
         "id": m.id, "mine": m.sender_id == me.id, "body": m.body, "time": fmt_time(m.created_at),
@@ -660,7 +737,8 @@ def post_message(request, **target):
             notify(member, f"New message in {m.group.name}", m.preview,
                    reverse("group", args=[m.group_id]), Notification.Kind.MESSAGE, request.user)
     notify_mentions(m.body, request.user, reverse("conversation", args=[m.recipient_id]) if m.recipient_id else reverse("group", args=[m.group_id]))
-    return JsonResponse({"messages": [as_json(m, request.user)]})
+    receipt = dm_receipt(request.user, m.recipient) if m.recipient_id else group_receipt(request.user, m.group)
+    return JsonResponse({"messages": [as_json(m, request.user)], "receipt": receipt})
 
 
 def after_param(request):
@@ -675,6 +753,12 @@ def inbox(request):
     return render(request, "messages.html", {**chat_base(request.user), "active_key": None})
 
 
+@login_required
+def threads_partial(request):
+    """Just the conversation list, so an open chat page can refresh it the moment something arrives."""
+    return render(request, "_threads.html", {"threads": threads(request.user), "active_key": request.GET.get("active", "")})
+
+
 # ---- 1-on-1 ----
 @login_required
 def conversation(request, user_id):
@@ -682,11 +766,12 @@ def conversation(request, user_id):
     other = resident_or_404(user_id)
     if other.pk == me.pk:
         return redirect("inbox")
-    Message.objects.filter(group__isnull=True, sender=other, recipient=me, is_read=False).update(is_read=True)
+    mark_dm_read(me, other)
     chat = list(thread_qs(me, other).select_related("sender").order_by("-id")[:100])[::-1]
     return render(request, "messages.html", {
         **chat_base(me), "active_key": f"dm-{other.pk}", "peer": other, "chat": chat,
         "last_id": chat[-1].id if chat else 0, "api": reverse("conversation_api", args=[other.pk]),
+        "receipt": dm_receipt(me, other),
     })
 
 
@@ -703,13 +788,14 @@ def conversation_api(request, user_id):
                 TypingIndicator.objects.update_or_create(thread_key=key, user=me)
             else:
                 TypingIndicator.objects.filter(thread_key=key, user=me).delete()
+            live.bump(live.user_key(other.pk, "c"))  # their tab shows / clears "typing…" right away
             return JsonResponse({"typing": typing_payload(key, me), "online": other.profile.is_online})
         return post_message(request, recipient=other)
     new = list(thread_qs(me, other).filter(id__gt=after_param(request)).select_related("sender").order_by("id"))
-    Message.objects.filter(group__isnull=True, sender=other, recipient=me, is_read=False).update(is_read=True)
+    mark_dm_read(me, other)
     key = thread_key_for_dm(me, other)
     return JsonResponse({"messages": [as_json(m, me) for m in new], "typing": typing_payload(key, me),
-                         "online": other.profile.is_online})
+                         "online": other.profile.is_online, "receipt": dm_receipt(me, other)})
 
 
 # ---- groups ----
@@ -744,11 +830,13 @@ def group_chat(request, pk):
     group = my_group_or_404(me, pk)
     chat = list(Message.objects.filter(group=group).select_related("sender__profile").order_by("-id")[:100])[::-1]
     last_id = chat[-1].id if chat else 0
-    GroupMember.objects.filter(group=group, user=me, last_read__lt=last_id).update(last_read=last_id)
+    if GroupMember.objects.filter(group=group, user=me, last_read__lt=last_id).update(last_read=last_id):
+        bump_group(group.pk)  # "Seen by …" for the senders, badges for my other tabs
+    clear_chat_alerts(me, reverse("group", args=[group.pk]))
     can_manage = group.created_by_id == me.id
     return render(request, "messages.html", {
         **chat_base(me), "active_key": f"g-{group.pk}", "group": group, "chat": chat, "last_id": last_id,
-        "api": reverse("group_api", args=[group.pk]),
+        "api": reverse("group_api", args=[group.pk]), "receipt": group_receipt(me, group),
         "members": group.memberships.select_related("user__profile").order_by("user__first_name"),
         "online_count": sum(member.user.profile.is_online for member in group.memberships.select_related("user__profile")),
         "can_manage": can_manage,
@@ -767,13 +855,17 @@ def group_api(request, pk):
                 TypingIndicator.objects.update_or_create(thread_key=key, user=me)
             else:
                 TypingIndicator.objects.filter(thread_key=key, user=me).delete()
+            live.bump(*[live.user_key(uid, "c") for uid in group.memberships.exclude(user=me).values_list("user_id", flat=True)])
             return JsonResponse({"typing": typing_payload(key, me)})
         return post_message(request, group=group)
     new = list(Message.objects.filter(group=group, id__gt=after_param(request)).select_related("sender").order_by("id"))
+    if new and GroupMember.objects.filter(group=group, user=me, last_read__lt=new[-1].id).update(last_read=new[-1].id):
+        bump_group(group.pk)
     if new:
-        GroupMember.objects.filter(group=group, user=me, last_read__lt=new[-1].id).update(last_read=new[-1].id)
+        clear_chat_alerts(me, reverse("group", args=[group.pk]))
     key = f"group-{group.pk}"
-    return JsonResponse({"messages": [as_json(m, me) for m in new], "typing": typing_payload(key, me)})
+    return JsonResponse({"messages": [as_json(m, me) for m in new], "typing": typing_payload(key, me),
+                         "receipt": group_receipt(me, group)})
 
 
 @login_required
@@ -806,15 +898,27 @@ def group_leave(request, pk):
 # --------------------------------------------------------------------------
 @login_required
 def notifications(request):
-    items = Notification.objects.filter(recipient=request.user).select_related("actor")[:100]
-    Notification.objects.filter(recipient=request.user, is_read=False).update(is_read=True)
-    return render(request, "notifications.html", {"notifications": items})
+    items = list(Notification.objects.filter(recipient=request.user).select_related("actor")[:100])
+    if Notification.objects.filter(recipient=request.user, is_read=False).update(is_read=True):
+        live.bump(live.user_key(request.user.pk, "n"))  # badges in my other tabs
+    keys_ok, keys_message = push.check_keys()
+    return render(request, "notifications.html", {"notifications": items, "push_keys_ok": keys_ok,
+                                                   "push_keys_message": keys_message})
+
+
+@login_required
+@require_POST
+def notifications_read_all(request):
+    if Notification.objects.filter(recipient=request.user, is_read=False).update(is_read=True):
+        live.bump(live.user_key(request.user.pk, "n"))
+    return JsonResponse({"ok": True})
 
 
 @login_required
 @require_POST
 def notification_read(request, pk):
-    Notification.objects.filter(pk=pk, recipient=request.user).update(is_read=True)
+    if Notification.objects.filter(pk=pk, recipient=request.user, is_read=False).update(is_read=True):
+        live.bump(live.user_key(request.user.pk, "n"))
     return redirect(request.POST.get("next") or "notifications")
 
 
@@ -962,6 +1066,9 @@ def game_update(request, pk):
         challenge.save(update_fields=["status"])
         if answer == GameChallenge.Status.ACCEPTED:
             session = session_for_challenge(challenge)
+            notify(challenge.challenger, f"{request.user.display_name} accepted your {challenge.get_game_display()} invite",
+                   "The game is ready. Tap to play.", reverse("game_play", args=[session.pk]),
+                   Notification.Kind.GAME, request.user)
             return redirect("game_play", pk=session.pk)
         notify(challenge.challenger, f"{request.user.display_name} {answer} your game invite", url=reverse("games"),
                kind=Notification.Kind.GAME, actor=request.user)
@@ -1158,26 +1265,46 @@ def presence(request):
     return JsonResponse({"online": True})
 
 
+def json_body(request):
+    try:
+        return json.loads(request.body or b"{}")
+    except ValueError:
+        return {}
+
+
 @login_required
 @require_POST
 def push_subscribe(request):
-    if not (settings.VAPID_PUBLIC_KEY and settings.VAPID_PRIVATE_KEY):
+    """Save (or re-assign) this device. If the phone was last used by someone else, it now belongs to whoever is logged in."""
+    if not push.enabled():
         return JsonResponse({"ok": False, "error": "Push notifications are not configured on the server."}, status=503)
-    data = request.POST or request.body
-    if isinstance(data, bytes):
-        import json
-        try:
-            data = json.loads(data or "{}")
-        except ValueError:
-            return JsonResponse({"ok": False, "error": "Invalid push subscription."}, status=400)
-    endpoint = data.get("endpoint")
-    keys = data.get("keys", {})
-    if not endpoint or not keys.get("p256dh") or not keys.get("auth"):
+    data = json_body(request) if request.content_type == "application/json" else request.POST
+    endpoint = data.get("endpoint") or ""
+    keys = data.get("keys") or {}
+    if not endpoint.startswith("https://") or len(endpoint) > 500 or not keys.get("p256dh") or not keys.get("auth"):
         return JsonResponse({"ok": False, "error": "Incomplete push subscription."}, status=400)
-    subscription, _ = PushSubscription.objects.update_or_create(endpoint=endpoint, defaults={"user": request.user,
-        "p256dh": keys["p256dh"], "auth": keys["auth"]})
+    subscription, _ = PushSubscription.objects.update_or_create(endpoint=endpoint, defaults={
+        "user": request.user, "p256dh": keys["p256dh"][:200], "auth": keys["auth"][:200]})
     return JsonResponse({"ok": True, "subscription_id": subscription.pk})
 
 
+@login_required
+@require_POST
+def push_unsubscribe(request):
+    """Detach this device from my account (called on log out, so my alerts don't keep popping up on a shared phone)."""
+    PushSubscription.objects.filter(user=request.user, endpoint=json_body(request).get("endpoint", "")).delete()
+    return JsonResponse({"ok": True})
+
+
+@login_required
+@require_POST
+def push_test(request):
+    return JsonResponse(push.send_test(request.user))
+
+
 def service_worker(request):
-    return HttpResponse("""self.addEventListener('push', event => { let data = {}; try { data = event.data ? event.data.json() : {}; } catch (_) { data = {body: event.data ? event.data.text() : ''}; } event.waitUntil(self.registration.showNotification(data.title || 'Wardbook', { body: data.body || '', tag: data.tag || 'wardbook', renotify: true, vibrate: [200, 100, 200], data: { url: data.url || '/' } })); }); self.addEventListener('notificationclick', event => { event.notification.close(); event.waitUntil(clients.openWindow(event.notification.data.url)); });""", content_type="application/javascript")
+    """Served from the site root so it can receive pushes for every page."""
+    resp = render(request, "sw.js", content_type="application/javascript")
+    resp["Service-Worker-Allowed"] = "/"
+    resp["Cache-Control"] = "no-cache"
+    return resp

@@ -3,6 +3,18 @@
 {% block content %}
 <h1 class="page-title h3 mb-3">Neighbourhood games</h1>
 <form method="post" action="{% url 'game_challenge' %}" class="card-wb p-3 mb-4">{% csrf_token %}<div class="row g-2 align-items-end"><div class="col-md-4"><label class="small fw-semibold">Challenge a neighbour</label><select name="opponent" class="form-select" required><option value="">Choose one neighbour</option>{% for r in residents %}<option value="{{ r.pk }}">{{ r.display_name }} · {{ r.house }}</option>{% endfor %}</select></div><div class="col-md-3"><label class="small fw-semibold">Game</label><select name="game" class="form-select"><option value="tic_tac_toe">Tic-tac-toe</option><option value="connect_four">Connect Four</option><option value="snakes_ladders">Snakes and Ladders</option></select></div><div class="col-md-3"><label class="small fw-semibold">Time control</label><input name="time_control" class="form-control" placeholder="10 min, casual"></div><div class="col-md-2"><button class="btn btn-wb w-100">Invite</button></div></div></form>
+<div id="games-live">
 {% if received %}<h2 class="h5 fw-bold">Invitations</h2>{% for g in received %}<div class="card-wb p-3 mb-2 d-flex align-items-center gap-3"><div class="flex-grow-1"><strong>{{ g.get_game_display }}</strong><span class="d-block small text-muted">{{ g.challenger.display_name }}{% if g.time_control %} · {{ g.time_control }}{% endif %}</span></div><form method="post" action="{% url 'game_update' g.pk %}" class="d-flex gap-2">{% csrf_token %}<button name="answer" value="accepted" class="btn btn-wb btn-sm">Accept & Play</button><button name="answer" value="declined" class="btn btn-outline-secondary btn-sm">Decline</button></form></div>{% endfor %}{% endif %}
 <h2 class="h5 fw-bold mt-4">Recent challenges</h2>{% for g in games %}<div class="card-wb p-3 mb-2 d-flex align-items-center gap-3"><div class="flex-grow-1"><strong>{{ g.get_game_display }}</strong> <span class="badge text-bg-light">{{ g.get_status_display }}</span><div class="small text-muted">{{ g.challenger.display_name }} vs {{ g.opponent.display_name }}{% if g.time_control %} · {{ g.time_control }}{% endif %}</div></div>{% if g.play_url %}<a class="btn btn-wb btn-sm" href="{{ g.play_url }}">Play</a>{% endif %}</div>{% empty %}<p class="text-muted">Challenge a neighbour to get started.</p>{% endfor %}
+</div>
 {% endblock %}
+{% block scripts %}<script>
+/* An invite arrives, is accepted or declined: refresh the lists without a reload. */
+wbLive.onNotif(function (n) {
+  if (n.kind !== 'game') return;
+  fetch(location.href, { credentials: 'same-origin' }).then(function (r) { return r.text(); }).then(function (html) {
+    var doc = new DOMParser().parseFromString(html, 'text/html'), fresh = doc.getElementById('games-live');
+    if (fresh) document.getElementById('games-live').innerHTML = fresh.innerHTML;   // our own page, escaped by Django
+  }).catch(function () {});
+});
+</script>{% endblock %}

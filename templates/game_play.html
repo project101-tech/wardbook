@@ -69,8 +69,10 @@
   function renderChat(messages) { messages.forEach(function(m){ if(m.id<=chatAfter)return; chatAfter=m.id; var row=document.createElement('div'); row.className='game-chat-msg '+(m.mine?'mine':''); var bubble=document.createElement('span'); bubble.textContent=(m.mine?'You':m.sender)+': '+m.body; row.appendChild(bubble); chatLog.appendChild(row); }); if(messages.length) chatLog.scrollTop=chatLog.scrollHeight; }
   function pollChat() { fetch('{% url "game_chat" session.pk %}?after='+chatAfter).then(function(r){return r.json();}).then(function(j){renderChat(j.messages||[]);}).catch(function(){}); }
   document.getElementById('game-chat-form').addEventListener('submit',function(e){e.preventDefault();var input=document.getElementById('game-chat-input'), body=input.value.trim();if(!body)return;var fd=new FormData();fd.append('body',body);input.value='';fetch('{% url "game_chat" session.pk %}',{method:'POST',headers:{'X-CSRFToken':csrf},body:fd}).then(function(r){return r.json();}).then(function(j){renderChat(j.messages||[]);});});
-  setInterval(function(){fetch('{% url "game_state" session.pk %}').then(function(r){return r.json();}).then(function(j){if(j.game)apply(j);}).catch(function(){});},2000);
-  pollChat(); setInterval(pollChat,2000);
+  function fetchState(){fetch('{% url "game_state" session.pk %}').then(function(r){return r.json();}).then(function(j){if(j.game)apply(j);}).catch(function(){});}
+  wbLive.on('g{{ session.pk }}', function(){ fetchState(); pollChat(); });   // a move or chat line shows up the instant it is played
+  setInterval(function(){ if(!document.hidden) fetchState(); },10000);       // keeps the online dot fresh; also a safety net
+  pollChat();
   render();
 })();
 </script>

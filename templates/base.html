@@ -77,10 +77,21 @@
     .post-body { white-space: normal; overflow-wrap: anywhere; }
     .comment { background: #f0f2f5; border-radius: 14px; padding: .45rem .75rem; }
     .alert { border-radius: 14px; border: 0; }
+
+    /* live toasts + notification prompt */
+    #wb-toasts { position: fixed; left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 60;
+                 display: flex; flex-direction: column; gap: .5rem; pointer-events: none; }
+    @media (min-width: 768px) { #wb-toasts { left: auto; right: 20px; bottom: 20px; width: 340px; } }
+    .wb-toast { pointer-events: auto; background: #fff; border: 1px solid var(--wb-line); border-left: 4px solid var(--wb-accent);
+                border-radius: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.16); padding: .6rem .85rem; color: inherit;
+                text-decoration: none; display: block; animation: wbIn .22s ease-out; }
+    .wb-toast b { display: block; font-size: .88rem; } .wb-toast span { display: block; font-size: .8rem; color: var(--wb-muted); overflow-wrap: anywhere; }
+    @keyframes wbIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    #wb-push-bar { background: var(--wb-accent-soft); border-bottom: 1px solid #cfe1ff; }
   </style>
   {% block head %}{% endblock %}
 </head>
-<body>
+<body{% if user.is_authenticated %} data-nid="{{ latest_notification_id|default:0 }}"{% endif %}>
 <!-- the curvy-W logo, defined once and reused with <use href="#wb-logo"> -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="wb-logo" viewBox="0 0 100 100">
@@ -104,18 +115,26 @@
         <a class="wb-toplink {% if here == 'directory' %}active{% endif %}" href="{% url 'directory' %}">Neighbours</a>
         <a class="wb-toplink {% if here == 'communities' %}active{% endif %}" href="{% url 'communities' %}">Communities</a>
         <a class="wb-toplink {% if here == 'games' %}active{% endif %}" href="{% url 'games' %}">Games</a>
-        <a class="wb-toplink {% if here == 'inbox' or here == 'conversation' or here == 'group' %}active{% endif %}" href="{% url 'inbox' %}">Messages{% if unread_dms %} <span class="wb-badge" style="position:static;margin-left:2px">{{ unread_dms }}</span>{% endif %}</a>
-        <a class="wb-toplink {% if here == 'notifications' %}active{% endif %}" href="{% url 'notifications' %}" title="Notifications"><i class="bi bi-bell-fill"></i>{% if unread_notifications %} <span class="wb-badge" style="position:static;margin-left:2px">{{ unread_notifications }}</span>{% endif %}</a>
+        <a class="wb-toplink {% if here == 'inbox' or here == 'conversation' or here == 'group' %}active{% endif %}" href="{% url 'inbox' %}">Messages <span class="wb-badge js-dms {% if not unread_dms %}d-none{% endif %}" style="position:static;margin-left:2px">{{ unread_dms }}</span></a>
+        <a class="wb-toplink {% if here == 'notifications' %}active{% endif %}" href="{% url 'notifications' %}" title="Notifications"><i class="bi bi-bell-fill"></i> <span class="wb-badge js-notifs {% if not unread_notifications %}d-none{% endif %}" style="position:static;margin-left:2px">{{ unread_notifications }}</span></a>
         <a class="wb-toplink {% if here == 'profile' %}active{% endif %}" href="{% url 'profile' %}">{{ user.first_name|default:user.username }}</a>
         {% if user.is_staff %}<a class="wb-toplink" href="/admin/" title="Control room"><i class="bi bi-gear-fill"></i></a>{% endif %}
       </nav>
       <div class="d-md-none">
         <a class="wb-toplink" href="{% url 'directory' %}" title="Neighbours"><i class="bi bi-people-fill"></i></a>
-        <a class="wb-toplink" href="{% url 'notifications' %}" title="Notifications"><i class="bi bi-bell-fill"></i>{% if unread_notifications %}<span class="wb-badge">{{ unread_notifications }}</span>{% endif %}</a>
+        <a class="wb-toplink" href="{% url 'notifications' %}" title="Notifications"><i class="bi bi-bell-fill"></i><span class="wb-badge js-notifs {% if not unread_notifications %}d-none{% endif %}">{{ unread_notifications }}</span></a>
         {% if user.is_staff %}<a class="wb-toplink" href="/admin/" title="Control room"><i class="bi bi-gear-fill"></i></a>{% endif %}
       </div>
     </div>
   </header>
+  <div id="wb-push-bar" class="d-none">
+    <div class="container d-flex align-items-center gap-2 py-2 small" style="max-width: 1000px;">
+      <i class="bi bi-bell-fill" style="color:var(--wb-accent)"></i>
+      <span class="flex-grow-1">Get messages and updates on this phone even when Wardbook is closed.</span>
+      <button type="button" id="wb-push-on" class="btn btn-wb btn-sm py-1">Turn on</button>
+      <button type="button" id="wb-push-later" class="icon-btn" aria-label="Not now"><i class="bi bi-x-lg"></i></button>
+    </div>
+  </div>
 {% endif %}
 
 <main class="container wb-main {% block mainclass %}{% endblock %} py-3">
@@ -130,19 +149,169 @@
     <a class="wb-tab {% if here == 'feed' %}active{% endif %}" href="{% url 'feed' %}"><i class="bi bi-house-heart{% if here == 'feed' %}-fill{% endif %}"></i>Home</a>
     <a class="wb-tab {% if here == 'announcements' %}active{% endif %}" href="{% url 'announcements' %}"><i class="bi bi-megaphone{% if here == 'announcements' %}-fill{% endif %}"></i>Notices</a>
     <a class="wb-tab {% if here == 'payments' %}active{% endif %}" href="{% url 'payments' %}"><i class="bi bi-wallet2"></i>Pay</a>
-    <a class="wb-tab {% if here == 'inbox' or here == 'conversation' or here == 'group' %}active{% endif %}" href="{% url 'inbox' %}"><i class="bi bi-chat-dots{% if here == 'inbox' or here == 'conversation' or here == 'group' %}-fill{% endif %}"></i>Chat{% if unread_dms %}<span class="wb-badge">{{ unread_dms }}</span>{% endif %}</a>
+    <a class="wb-tab {% if here == 'inbox' or here == 'conversation' or here == 'group' %}active{% endif %}" href="{% url 'inbox' %}"><i class="bi bi-chat-dots{% if here == 'inbox' or here == 'conversation' or here == 'group' %}-fill{% endif %}"></i>Chat<span class="wb-badge js-dms {% if not unread_dms %}d-none{% endif %}">{{ unread_dms }}</span></a>
     <a class="wb-tab {% if here == 'games' or here == 'game_play' %}active{% endif %}" href="{% url 'games' %}"><i class="bi bi-controller"></i>Games</a>
     <a class="wb-tab {% if here == 'communities' or here == 'community_detail' %}active{% endif %}" href="{% url 'communities' %}"><i class="bi bi-people{% if here == 'communities' or here == 'community_detail' %}-fill{% endif %}"></i>Groups</a>
     <a class="wb-tab {% if here == 'directory' %}active{% endif %}" href="{% url 'directory' %}"><i class="bi bi-person-lines-fill"></i>Neighbours</a>
-    <a class="wb-tab {% if here == 'notifications' %}active{% endif %}" href="{% url 'notifications' %}"><i class="bi bi-bell{% if here == 'notifications' %}-fill{% endif %}"></i>Alerts{% if unread_notifications %}<span class="wb-badge">{{ unread_notifications }}</span>{% endif %}</a>
+    <a class="wb-tab {% if here == 'notifications' %}active{% endif %}" href="{% url 'notifications' %}"><i class="bi bi-bell{% if here == 'notifications' %}-fill{% endif %}"></i>Alerts<span class="wb-badge js-notifs {% if not unread_notifications %}d-none{% endif %}">{{ unread_notifications }}</span></a>
     <a class="wb-tab {% if here == 'profile' %}active{% endif %}" href="{% url 'profile' %}"><i class="bi bi-person-circle"></i>Me</a>
   </nav>
 {% endif %}
 {% endwith %}
+{% if user.is_authenticated %}
+<div id="wb-toasts" aria-live="polite"></div>
+<script>
+/* ---- wbLive: one parked request per visible tab; the server answers the instant something changes ---- */
+window.wbLive = (function () {
+  var handlers = { n: function () {} }, vers = {}, notifCbs = [], running = false, stopped = false, ctrl = null;
+  var nid = parseInt(document.body.dataset.nid || '0', 10), skipToasts = false, baseTitle = document.title, backoff = 0;
+  var url = '{% url "live" %}';
+
+  function setCounts(c) {
+    document.querySelectorAll('.js-dms').forEach(function (e) { e.textContent = c.dms; e.classList.toggle('d-none', !c.dms); });
+    document.querySelectorAll('.js-notifs').forEach(function (e) { e.textContent = c.notifs; e.classList.toggle('d-none', !c.notifs); });
+    document.title = (c.notifs ? '(' + c.notifs + ') ' : '') + baseTitle;
+  }
+  function toast(n) {
+    var box = document.getElementById('wb-toasts');
+    var a = document.createElement('a'); a.className = 'wb-toast';
+    a.href = (n.url && n.url.charAt(0) === '/') ? n.url : '{% url "notifications" %}';
+    var t = document.createElement('b'); t.textContent = n.title; a.appendChild(t);
+    if (n.body) { var b = document.createElement('span'); b.textContent = n.body; a.appendChild(b); }
+    box.appendChild(a);
+    while (box.children.length > 3) box.removeChild(box.firstChild);
+    setTimeout(function () { if (a.parentNode) a.parentNode.removeChild(a); }, 7000);
+  }
+  function gotNotif(n) {
+    notifCbs.forEach(function (cb) { try { cb(n); } catch (e) {} });
+    var here = location.pathname;
+    if (skipToasts || here === '{% url "notifications" %}' || (n.kind === 'message' && n.url === here)) return;
+    toast(n);
+  }
+  function handle(j) {
+    if (j.counts) setCounts(j.counts);
+    (j.notifs || []).forEach(function (n) { if (n.id > nid) gotNotif(n); });
+    if (typeof j.nid === 'number' && j.nid > nid) nid = j.nid;
+    (j.changed || []).forEach(function (name) {
+      var first = !(name in vers);
+      vers[name] = j.v[name];
+      if (handlers[name]) { try { handlers[name](first); } catch (e) { if (window.console) console.error(e); } }
+    });
+  }
+  function loop() {
+    if (running || stopped || document.hidden) return;
+    running = true;
+    var s = Object.keys(handlers).map(function (n) { return n + ':' + (n in vers ? vers[n] : '-'); }).join(',');
+    ctrl = new AbortController();
+    var watchdog = setTimeout(function () { ctrl.abort(); }, 35000);
+    var delay = 0;
+    fetch(url + '?s=' + encodeURIComponent(s) + '&nid=' + nid, { credentials: 'same-origin', signal: ctrl.signal, cache: 'no-store' })
+      .then(function (r) { if (r.status === 401) { stopped = true; throw 'auth'; } if (!r.ok) throw r.status; return r.json(); })
+      .then(function (j) { backoff = 0; delay = j.retry || 0; handle(j); skipToasts = false; })
+      .catch(function (e) { if (e !== 'auth' && !(e && e.name === 'AbortError')) { backoff = Math.min((backoff || 1000) * 2, 20000); delay = backoff; } })
+      .then(function () { clearTimeout(watchdog); running = false; setTimeout(loop, delay); });
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { if (ctrl) ctrl.abort(); return; }   // closed tabs are covered by push; this frees the server
+    vers = {}; skipToasts = true;                                // back on screen: resync every channel once, quietly
+    loop();
+  });
+  window.addEventListener('online', loop);
+  setTimeout(loop, 0);   // after the page's own scripts have registered their channels
+  return {
+    on: function (name, fn) { handlers[name] = fn; },
+    onNotif: function (cb) { notifCbs.push(cb); }
+  };
+})();
+
+/* ---- wbPush: turn notifications on, keep this device registered to whoever is logged in ---- */
+window.wbPush = (function () {
+  var KEY = '{{ VAPID_PUBLIC_KEY }}', CONFIGURED = {{ PUSH_CONFIGURED|yesno:"true,false" }}, UID = '{{ user.pk }}';
+  var supported = ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
+  var CSRF = '{{ csrf_token }}';
+  function keyBytes(k) { var pad = '='.repeat((4 - k.length % 4) % 4), raw = atob((k + pad).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(raw, function (c) { return c.charCodeAt(0); }); }
+  function sameKey(sub) {
+    var cur = sub.options && sub.options.applicationServerKey; if (!cur) return true;
+    var a = new Uint8Array(cur), b = keyBytes(KEY); if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+  function post(u, body) { return fetch(u, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }); }
+  function flag(sub, set) { var k = 'wbps:' + UID + ':' + sub.endpoint; try { if (set === undefined) return sessionStorage.getItem(k); set ? sessionStorage.setItem(k, '1') : sessionStorage.removeItem(k); } catch (e) {} }
+  function state() {
+    if (!supported) return 'unsupported';
+    if (!CONFIGURED) return 'unconfigured';
+    return Notification.permission === 'granted' ? 'on' : Notification.permission === 'denied' ? 'denied' : 'off';
+  }
+  var regP = null;
+  function ready() {
+    if (!regP) regP = navigator.serviceWorker.register('{% url "service_worker" %}', { scope: '/' }).then(function () { return navigator.serviceWorker.ready; });
+    return regP;
+  }
+  // Called on every page: heals a missing / expired / other-account subscription without bothering the user.
+  async function ensure() {
+    if (!supported || !CONFIGURED) return state();
+    var reg = await ready();
+    if (Notification.permission !== 'granted') return state();
+    var sub = await reg.pushManager.getSubscription();
+    if (sub && !sameKey(sub)) {   // the server's keys changed: forget the old subscription here and on the server
+      flag(sub, false); try { await post('{% url "push_unsubscribe" %}', { endpoint: sub.endpoint }); } catch (e) {}
+      await sub.unsubscribe(); sub = null;
+    }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(KEY) });
+    if (!flag(sub)) {
+      var r = await post('{% url "push_subscribe" %}', sub.toJSON());
+      if (!r.ok) { var e = await r.json().catch(function () { return {}; }); throw new Error(e.error || 'The server did not accept this device.'); }
+      flag(sub, true);
+    }
+    return 'on';
+  }
+  async function enable() {          // must run from a tap
+    if (state() === 'unsupported' || state() === 'unconfigured') throw new Error('This browser or server cannot send notifications.');
+    var p = await Notification.requestPermission();
+    if (p !== 'granted') throw new Error('Notifications are blocked. Allow them for this site in your browser settings, then try again.');
+    return ensure();
+  }
+  async function detach() {          // log out: stop this phone showing the previous person's alerts
+    try {
+      var reg = await Promise.race([ready(), new Promise(function (_, rej) { setTimeout(rej, 1500); })]);
+      var sub = await reg.pushManager.getSubscription();
+      if (sub) { flag(sub, false); await post('{% url "push_unsubscribe" %}', { endpoint: sub.endpoint }); }
+    } catch (e) {}
+  }
+  async function test() { var r = await post('{% url "push_test" %}'); return r.json(); }
+  async function device() {
+    if (!supported) return null;
+    var reg = await ready(); return reg.pushManager.getSubscription();
+  }
+  return { state: state, ensure: ensure, enable: enable, detach: detach, test: test, device: device };
+})();
+
+/* prompt bar + self-healing registration */
+(function () {
+  var bar = document.getElementById('wb-push-bar'), later = null;
+  try { later = parseInt(localStorage.getItem('wb-push-later') || '0', 10); } catch (e) {}
+  function hide() { bar.classList.add('d-none'); }
+  wbPush.ensure().then(function (st) {
+    if (st === 'off' && !(later && Date.now() - later < 14 * 864e5)) bar.classList.remove('d-none');
+  }).catch(function (e) { if (window.console) console.warn('push setup:', e); });
+  document.getElementById('wb-push-on').addEventListener('click', function () {
+    wbPush.enable().then(hide).catch(function (e) { hide(); alert(e.message); });
+  });
+  document.getElementById('wb-push-later').addEventListener('click', function () {
+    hide(); try { localStorage.setItem('wb-push-later', String(Date.now())); } catch (e) {}
+  });
+  document.addEventListener('submit', function (e) {   // log out: detach this phone from my account first
+    var f = e.target;
+    if (f.getAttribute && f.getAttribute('action') === '{% url "logout" %}') { e.preventDefault(); wbPush.detach().then(function () { f.submit(); }); }
+  });
+})();
+</script>
+{% endif %}
 {% block scripts %}{% endblock %}
 {% if user.is_authenticated %}
 <script>
-(function () { function beat() { fetch('{% url "presence" %}', {method:'POST', credentials:'same-origin', headers:{'X-CSRFToken':'{{ csrf_token }}'}}).catch(function(){}); } beat(); setInterval(beat, 20000); })();
+(function () { function beat() { if (document.hidden) return; fetch('{% url "presence" %}', {method:'POST', credentials:'same-origin', headers:{'X-CSRFToken':'{{ csrf_token }}'}}).catch(function(){}); } beat(); setInterval(beat, 25000); document.addEventListener('visibilitychange', beat); })();
 </script>
 {% endif %}
 </body>

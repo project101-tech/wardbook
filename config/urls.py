@@ -4,7 +4,7 @@ from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import path
 
-from core import views
+from core import live, views
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -28,6 +28,9 @@ urlpatterns = [
     path("neighbours/<int:user_id>/", views.public_profile, name="public_profile"),
     path("notifications/", views.notifications, name="notifications"),
     path("notifications/<int:pk>/read/", views.notification_read, name="notification_read"),
+    path("notifications/read-all/", views.notifications_read_all, name="notifications_read_all"),
+    path("live/", live.stream, name="live"),
+    path("feed/live/", views.feed_live, name="feed_live"),
     path("communities/", views.communities, name="communities"),
     path("communities/new/", views.community_new, name="community_new"),
     path("communities/<int:pk>/join/", views.community_join, name="community_join"),
@@ -44,8 +47,11 @@ urlpatterns = [
     path("games/session/<int:pk>/rematch/", views.game_rematch, name="game_rematch"),
     path("presence/", views.presence, name="presence"),
     path("push/subscribe/", views.push_subscribe, name="push_subscribe"),
+    path("push/unsubscribe/", views.push_unsubscribe, name="push_unsubscribe"),
+    path("push/test/", views.push_test, name="push_test"),
     path("service-worker.js", views.service_worker, name="service_worker"),
     path("messages/", views.inbox, name="inbox"),
+    path("messages/threads/", views.threads_partial, name="threads_partial"),
     path("messages/<int:user_id>/", views.conversation, name="conversation"),
     path("messages/<int:user_id>/api/", views.conversation_api, name="conversation_api"),
     path("groups/new/", views.group_new, name="group_new"),

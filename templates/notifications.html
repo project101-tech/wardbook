@@ -1,40 +1,80 @@
 {% extends "base.html" %}
 {% block title %}Notifications{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3"><h1 class="page-title h3 mb-0">Notifications</h1><button id="enable-push" class="btn btn-soft btn-sm"><i class="bi bi-phone me-1"></i><span id="push-label">Check push alerts</span></button></div>
-<div id="push-status" class="small text-muted mb-3" role="status"></div>
-<div class="card-wb overflow-hidden">
+<h1 class="page-title h3 mb-3">Notifications</h1>
+
+<!-- phone / browser alerts -->
+<div class="card-wb p-3 mb-3" id="push-card">
+  <div class="d-flex align-items-center gap-3">
+    <span class="av" style="background:var(--wb-accent-soft);color:var(--wb-accent)"><i class="bi bi-phone-vibrate-fill"></i></span>
+    <div class="flex-grow-1 lh-sm">
+      <div class="fw-bold">Alerts on this device</div>
+      <small id="push-status" class="text-muted" role="status">Checking…</small>
+    </div>
+    <button id="push-on" type="button" class="btn btn-wb btn-sm d-none">Turn on</button>
+    <button id="push-test" type="button" class="btn btn-soft btn-sm d-none">Send a test</button>
+  </div>
+  {% if not push_keys_ok and PUSH_CONFIGURED %}
+    <div class="alert alert-danger small mt-3 mb-0" role="alert"><strong>Server setup problem:</strong> {{ push_keys_message }}</div>
+  {% endif %}
+  <div id="push-result" class="small mt-2"></div>
+</div>
+
+<div class="card-wb overflow-hidden" id="notif-list">
   {% for n in notifications %}
-    <a href="{{ n.url|default:'#' }}" class="d-flex gap-3 p-3 border-bottom text-decoration-none {% if not n.is_read %}bg-light{% endif %}" style="color:inherit">
+    <a href="{{ n.url|default:'#' }}" data-id="{{ n.id }}" class="d-flex gap-3 p-3 border-bottom text-decoration-none {% if not n.is_read %}bg-light{% endif %}" style="color:inherit">
       <span class="av" style="background:var(--wb-accent-soft);color:var(--wb-accent)"><i class="bi bi-bell-fill"></i></span>
-      <span class="flex-grow-1"><strong>{{ n.title }}</strong><span class="d-block small text-muted">{{ n.body }}</span><small class="text-muted">{{ n.created_at|timesince }} ago</small></span>
+      <span class="flex-grow-1"><strong>{{ n.title }}</strong>{% if not n.is_read %} <span class="badge text-bg-primary align-middle">New</span>{% endif %}<span class="d-block small text-muted">{{ n.body }}</span><small class="text-muted">{{ n.created_at|timesince }} ago</small></span>
     </a>
-  {% empty %}<div class="p-5 text-center text-muted"><i class="bi bi-bell-slash fs-1 d-block mb-2"></i>No notifications yet.</div>{% endfor %}
+  {% empty %}<div id="notif-empty" class="p-5 text-center text-muted"><i class="bi bi-bell-slash fs-1 d-block mb-2"></i>No notifications yet.</div>{% endfor %}
 </div>
 {% endblock %}
+
 {% block scripts %}<script>
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('{% url 'service_worker' %}');
-var pushButton = document.getElementById('enable-push');
-var pushStatus = document.getElementById('push-status');
-function keyBytes(key) { var pad = '='.repeat((4 - key.length % 4) % 4), raw = atob((key + pad).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(raw, function (c) { return c.charCodeAt(0); }); }
-async function checkPush() {
-  if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) { pushStatus.textContent='This browser does not support push alerts.'; return; }
-  if (Notification.permission === 'denied') { pushStatus.textContent='Push alerts are blocked. Allow notifications for this site in Chrome site settings.'; document.getElementById('push-label').textContent='Push blocked'; return; }
-  if (!'{{ PUSH_CONFIGURED|yesno:"1," }}') { pushStatus.textContent='Push setup is missing on the server. An administrator must add VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in Render.'; document.getElementById('push-label').textContent='Server setup needed'; pushButton.disabled=true; return; }
-  var registration = await navigator.serviceWorker.ready, subscription = await registration.pushManager.getSubscription();
-  if (subscription) { pushStatus.textContent='Push alerts are enabled on this device.'; document.getElementById('push-label').textContent='Push enabled'; pushButton.disabled=true; }
-  else { pushStatus.textContent='Enable alerts to receive DMs, mentions, game invites, and Town Square updates when this tab is closed.'; document.getElementById('push-label').textContent='Enable push alerts'; }
-}
-if (pushButton) pushButton.addEventListener('click', async function () {
-  try {
-    if (!'{{ PUSH_CONFIGURED|yesno:"1," }}') return checkPush();
-    var registration = await navigator.serviceWorker.ready, permission = await Notification.requestPermission();
-    if (permission !== 'granted') return checkPush();
-    var subscription = await registration.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: keyBytes('{{ VAPID_PUBLIC_KEY }}')});
-    var response = await fetch('{% url 'push_subscribe' %}', {method:'POST', credentials:'same-origin', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body:JSON.stringify(subscription)});
-    if (!response.ok) { var error = await response.json().catch(function () { return {}; }); throw new Error(error.error || 'subscription failed'); }
-    await checkPush();
-  } catch (error) { pushStatus.textContent='Could not enable push alerts. Check browser permissions and try again.'; }
-});
-checkPush();
+(function () {
+  /* ---- the list: new notifications slot in at the top the moment they arrive ---- */
+  var list = document.getElementById('notif-list');
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
+  wbLive.onNotif(function (n) {
+    var empty = document.getElementById('notif-empty'); if (empty) empty.remove();
+    var a = el('a', 'd-flex gap-3 p-3 border-bottom text-decoration-none bg-light');
+    a.href = (n.url && n.url.charAt(0) === '/') ? n.url : '#'; a.style.color = 'inherit'; a.dataset.id = n.id;
+    var av = el('span', 'av'); av.style.background = 'var(--wb-accent-soft)'; av.style.color = 'var(--wb-accent)'; av.appendChild(el('i', 'bi bi-bell-fill')); a.appendChild(av);
+    var box = el('span', 'flex-grow-1');
+    box.appendChild(el('strong', '', n.title)); box.appendChild(document.createTextNode(' ')); box.appendChild(el('span', 'badge text-bg-primary align-middle', 'New'));
+    box.appendChild(el('span', 'd-block small text-muted', n.body || '')); box.appendChild(el('small', 'text-muted', 'just now'));
+    a.appendChild(box); list.insertBefore(a, list.firstChild);
+    // I'm looking at it, so it counts as read (keeps the bell badge honest)
+    fetch('{% url "notifications_read_all" %}', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRFToken': '{{ csrf_token }}' } }).catch(function () {});
+  });
+
+  /* ---- phone alerts ---- */
+  var status = document.getElementById('push-status'), result = document.getElementById('push-result');
+  var onBtn = document.getElementById('push-on'), testBtn = document.getElementById('push-test');
+  function say(text, cls) { result.className = 'small mt-2 ' + (cls || ''); result.textContent = text; }
+  function paint() {
+    var st = wbPush.state();
+    onBtn.classList.toggle('d-none', st !== 'off'); testBtn.classList.toggle('d-none', st !== 'on');
+    status.textContent = {
+      unsupported: 'This browser can\'t receive alerts. Use Chrome on Android, or Chrome / Edge on a computer.',
+      unconfigured: 'The server isn\'t set up for alerts yet (the VAPID keys are missing in Render).',
+      denied: 'Alerts are blocked for this site. In Chrome tap the lock icon next to the address, open Permissions, allow Notifications, then reload.',
+      off: 'Off. Turn them on to get messages and updates even when Wardbook is closed.',
+      on: 'On. You\'ll get messages and updates here even when Wardbook is closed.'
+    }[st];
+  }
+  onBtn.addEventListener('click', function () {
+    say('');
+    wbPush.enable().then(paint).catch(function (e) { paint(); say(e.message, 'text-danger'); });
+  });
+  testBtn.addEventListener('click', function () {
+    testBtn.disabled = true; say('Sending…', 'text-muted');
+    wbPush.ensure().then(function () { return wbPush.test(); }).then(function (r) {
+      if (r.delivered) say('Sent to ' + r.delivered + ' of your ' + r.devices + ' device' + (r.devices === 1 ? '' : 's') + '. It should pop up in a moment.' + (r.problems.length ? ' ' + r.problems.join(' ') : ''), r.problems.length ? 'text-warning' : 'text-success');
+      else say(r.problems.join(' ') || 'Nothing was sent.', 'text-danger');
+    }).catch(function (e) { say('Could not send the test: ' + e.message, 'text-danger'); }).then(function () { testBtn.disabled = false; });
+  });
+  paint();
+  wbPush.ensure().then(paint).catch(function (e) { paint(); say(e.message, 'text-danger'); });
+})();
 </script>{% endblock %}

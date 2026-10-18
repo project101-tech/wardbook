@@ -21,6 +21,9 @@
   .rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--wb-red); animation: blink 1s infinite; }
   @keyframes blink { 50% { opacity: .25; } }
   .pick { max-height: 220px; overflow-y: auto; border: 1px solid var(--wb-line); border-radius: 12px; padding: .25rem .75rem; }
+  .bubble.pending { opacity: .6; }
+  .receipt { align-self: flex-end; font-size: .68rem; color: var(--wb-muted); margin: -.15rem .35rem 0 0; }
+  .receipt.seen { color: var(--wb-accent); font-weight: 600; }
   .typing-line { min-height: 1.25rem; color: var(--wb-accent); font-size: .75rem; font-weight: 600; }
   .online-line { font-size: .72rem; }
 </style>
@@ -55,22 +58,8 @@
       </form>
     </div>
 
-    <div class="card-wb overflow-hidden">
-      {% for t in threads %}
-        <a class="thread {% if active_key == t.key %}on{% endif %}" href="{{ t.url }}">
-          {{ t.avatar }}
-          <div class="flex-grow-1 min-w-0 lh-sm">
-            <div class="fw-bold text-truncate">{{ t.title }} {% if t.online %}<span class="online-dot" title="Online"></span>{% endif %}{% if t.chip %}<span class="house-chip">{{ t.chip }}</span>{% endif %}</div>
-            <small class="text-muted d-block text-truncate">{{ t.preview }}</small>
-          </div>
-          {% if t.unread %}<span class="badge rounded-pill" style="background:var(--wb-red)">{{ t.unread }}</span>{% endif %}
-        </a>
-      {% empty %}
-        <div class="p-4 text-center text-muted small">
-          <i class="bi bi-chat-dots fs-2 d-block mb-1"></i>
-          No chats yet. Find a neighbour in <a href="{% url 'directory' %}">Neighbours</a> and tap Message, or start a group.
-        </div>
-      {% endfor %}
+    <div class="card-wb overflow-hidden" id="thread-list" data-active="{{ active_key|default:'' }}">
+      {% include "_threads.html" %}
     </div>
   </div>
 
@@ -95,7 +84,6 @@
             </a>
           {% endif %}
         </div>
-        <div id="typing-line" class="typing-line px-3 pt-2"></div>
 
         {% if group %}
         <div class="collapse border-bottom bg-light" id="group-info">
@@ -128,10 +116,12 @@
         {% endif %}
 
         <div id="chat" class="chat-box" data-api="{{ api }}" data-last="{{ last_id }}" data-group="{% if group %}1{% endif %}">
-          {% for m in chat %}<div class="bubble {% if m.sender_id == user.id %}mine{% else %}theirs{% endif %}" data-id="{{ m.id }}">{% if group and m.sender_id != user.id %}<div class="who">{{ m.sender.first_name|default:m.sender.username }}</div>{% endif %}{% if m.image %}<img class="pic" src="{{ m.image.url }}" alt="Photo" loading="lazy">{% endif %}{% if m.audio %}<audio controls preload="none" src="{{ m.audio.url }}"></audio>{% endif %}{% if m.body %}<div class="txt">{{ m.body }}</div>{% endif %}<div class="meta">{{ m.created_at|date:"j M, g:i A" }}</div></div>{% endfor %}
+          {% for m in chat %}<div class="bubble {% if m.sender_id == user.id %}mine{% else %}theirs{% endif %}" data-id="{{ m.id }}">{% if group and m.sender_id != user.id %}<div class="who">{{ m.sender.first_name|default:m.sender.username }}</div>{% endif %}{% if m.image %}<img class="pic" src="{{ m.image.url }}" alt="Photo" loading="lazy">{% endif %}{% if m.document %}<a href="{{ m.document.url }}" target="_blank" rel="noopener">Open document</a>{% endif %}{% if m.audio %}<audio controls preload="none" src="{{ m.audio.url }}"></audio>{% endif %}{% if m.body %}<div class="txt">{{ m.body }}</div>{% endif %}<div class="meta">{{ m.created_at|date:"j M, g:i A" }}</div></div>{% endfor %}
         </div>
 
+        {{ receipt|json_script:"receipt-data" }}
         <div id="err" class="small text-danger px-3 pb-1" style="display:none"></div>
+        <div id="typing-line" class="typing-line px-3 pb-1"></div>
 
         <!-- recording bar (shown while a voice note is being recorded) -->
         <div id="rec" class="rec-bar p-3 border-top">
@@ -164,20 +154,66 @@
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+/* conversation list: refreshed the moment a message arrives or is read (also used by the chat script below) */
+(function () {
+  var list = document.getElementById('thread-list'), busy = false, again = false;
+  window.refreshThreads = function () {
+    if (!list || document.hidden) return;
+    if (busy) { again = true; return; }
+    busy = true;
+    fetch('{% url "threads_partial" %}?active=' + encodeURIComponent(list.dataset.active || ''), { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (html) { if (html !== null) list.innerHTML = html; })   // server-rendered and escaped by Django
+      .catch(function () {})
+      .then(function () { busy = false; if (again) { again = false; window.refreshThreads(); } });
+  };
+  {% if not peer and not group %}wbLive.on('c', function () { window.refreshThreads(); });{% endif %}
+})();
+</script>
 {% if peer or group %}
 <script>
 (function () {
   var chat = document.getElementById('chat'), form = document.getElementById('send'), input = document.getElementById('msg');
   var api = chat.dataset.api, after = parseInt(chat.dataset.last || '0', 10), isGroup = !!chat.dataset.group;
   var csrf = form.querySelector('[name=csrfmiddlewaretoken]').value;
-  var errBox = document.getElementById('err'), typingLine = document.getElementById('typing-line'), peerOnline = document.getElementById('peer-online'), seen = {}, typingTimer = null;
+  var errBox = document.getElementById('err'), typingLine = document.getElementById('typing-line'), peerOnline = document.getElementById('peer-online'), seen = {};
+  var typingTimer = null, typingClear = null, typingOn = false, lastTypingSent = 0, receiptEl = null;
   chat.querySelectorAll('[data-id]').forEach(function (e) { seen[e.dataset.id] = true; });
 
   function toBottom() { chat.scrollTop = chat.scrollHeight; }
+  function nearBottom() { return chat.scrollHeight - chat.scrollTop - chat.clientHeight < 140; }
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
   function showErr(t) { errBox.textContent = t || ''; errBox.style.display = t ? 'block' : 'none'; }
-  function showTyping(users) { typingLine.textContent = users && users.length ? users.map(function (u) { return u.name; }).join(', ') + (users.length === 1 ? ' is typing…' : ' are typing…') : ''; }
-  function setTyping(active) { var fd = new FormData(); fd.append('typing', active ? '1' : '0'); fetch(api, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRFToken': csrf }, body: fd }).then(function (r) { return r.json(); }).then(function (j) { showTyping(j.typing || []); }); }
+
+  // "typing…" appears instantly; if the other person just closes the tab it clears itself after the server's 5 s window
+  function showTyping(users) {
+    typingLine.textContent = users && users.length ? users.map(function (u) { return u.name; }).join(', ') + (users.length === 1 ? ' is typing…' : ' are typing…') : '';
+    clearTimeout(typingClear);
+    if (users && users.length) typingClear = setTimeout(poll, 5200);
+  }
+  function setTyping(active) {
+    typingOn = active; lastTypingSent = Date.now();
+    var fd = new FormData(); fd.append('typing', active ? '1' : '0');
+    fetch(api, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRFToken': csrf }, body: fd }).catch(function () {});
+  }
+
+  // "Sent" / "Seen 4:32 PM" (DMs) or "Seen by Asha, Ravi" (groups) under my newest message, only while it is the last one
+  function placeReceipt(r) {
+    if (receiptEl) { receiptEl.remove(); receiptEl = null; }
+    if (!r) return;
+    var b = chat.querySelector('.bubble[data-id="' + r.id + '"]'); if (!b) return;
+    var text, seenIt;
+    if (isGroup) {
+      var n = r.seen_by.length; seenIt = n > 0;
+      text = !n ? 'Sent' : (r.total && n >= r.total ? 'Seen by everyone' : 'Seen by ' + r.seen_by.slice(0, 3).join(', ') + (n > 3 ? ' +' + (n - 3) : ''));
+    } else { seenIt = r.seen; text = r.seen ? 'Seen' + (r.at ? ' · ' + r.at : '') : 'Sent'; }
+    receiptEl = el('div', 'receipt' + (seenIt ? ' seen' : ''));
+    receiptEl.appendChild(el('i', 'bi ' + (seenIt ? 'bi-check2-all' : 'bi-check2') + ' me-1'));
+    receiptEl.appendChild(document.createTextNode(text));
+    b.after(receiptEl);
+  }
+  placeReceipt(JSON.parse(document.getElementById('receipt-data').textContent));
 
   // Everything user-supplied goes in via textContent / src, never innerHTML.
   function render(m) {
@@ -195,47 +231,61 @@
 
   chat.addEventListener('click', function (e) { if (e.target.classList.contains('pic')) window.open(e.target.src, '_blank'); });
 
+  // Fetch whatever is new. Runs the instant the server says something changed (wbLive), plus a slow safety net.
+  var polling = false, again = false;
   function poll() {
     if (document.hidden) return;
+    if (polling) { again = true; return; }
+    polling = true;
     fetch(api + '?after=' + after, { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (j) {
         if (!j.messages) return;
+        var stick = nearBottom();
         showTyping(j.typing || []);
         if (peerOnline && typeof j.online !== 'undefined') { peerOnline.innerHTML = j.online ? '<span class="online-dot"></span> Online' : 'Offline'; peerOnline.className = 'online-line ' + (j.online ? 'text-success' : 'text-muted'); }
         j.messages.forEach(function (m) { render(m); if (m.id > after) after = m.id; });
-        if (j.messages.length) toBottom();
-      }).catch(function () {});
+        placeReceipt(j.receipt);
+        if (j.messages.length && (stick || j.messages.some(function (m) { return m.mine; }))) toBottom();
+      }).catch(function () {})
+      .then(function () { polling = false; if (again) { again = false; poll(); } });
   }
-  setInterval(poll, 3000);
+  wbLive.on('c', function () { poll(); window.refreshThreads(); });
+  setInterval(poll, 30000);
 
-  function send(fd, onFail) {
+  function send(fd, onFail, tmp) {
     showErr('');
     return fetch(api, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRFToken': csrf }, body: fd })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
+        if (tmp) tmp.remove();
         if (!res.ok) { showErr(res.j.error || 'Could not send.'); if (onFail) onFail(); return; }
         res.j.messages.forEach(function (m) { render(m); if (m.id > after) after = m.id; });
+        placeReceipt(res.j.receipt);
         toBottom();
       })
-      .catch(function () { showErr('Network problem. Please try again.'); if (onFail) onFail(); });
+      .catch(function () { if (tmp) tmp.remove(); showErr('Network problem. Please try again.'); if (onFail) onFail(); });
   }
 
-  // ---- text ----
+  // ---- text: the bubble appears at once (greyed), then the server confirms ----
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     var body = input.value.trim();
     if (!body) return;
-    clearTimeout(typingTimer); setTyping(false);
+    clearTimeout(typingTimer); if (typingOn) setTyping(false);
     input.value = '';
+    placeReceipt(null);
+    var tmp = el('div', 'bubble mine pending'); tmp.appendChild(el('div', 'txt', body)); tmp.appendChild(el('div', 'meta', 'Sending…'));
+    chat.appendChild(tmp); toBottom();
     var fd = new FormData(); fd.append('body', body);
-    send(fd, function () { input.value = body; });
+    send(fd, function () { input.value = body; }, tmp);
   });
 
+  // typing signal: at most one request every 2.5 s while typing, one more when you stop
   input.addEventListener('input', function () {
     clearTimeout(typingTimer);
-    if (!input.value.trim()) { setTyping(false); return; }
-    setTyping(true);
+    if (!input.value.trim()) { if (typingOn) setTyping(false); return; }
+    if (!typingOn || Date.now() - lastTypingSent > 2500) setTyping(true);
     typingTimer = setTimeout(function () { setTyping(false); }, 3500);
   });
 
