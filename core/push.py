@@ -17,6 +17,7 @@ from functools import lru_cache
 from django.conf import settings
 from django.db import connection
 from django.templatetags.static import static
+from django.utils import timezone
 
 log = logging.getLogger(__name__)
 
@@ -210,7 +211,11 @@ def send_test(user):
     if not subs:
         return {"devices": 0, "delivered": 0,
                 "problems": ["No device is registered for your account yet. Tap “Turn on notifications” on this phone first."]}
-    payload = make_payload("Wardbook test 🔔", "Notifications are working on this device.", "/notifications/", f"test-{int(time.time())}")
+    # Plain wording on purpose: Chrome's on-device spam check dislikes emoji and generic, repeated text.
+    when = timezone.localtime().strftime("%I:%M %p").lstrip("0")
+    payload = make_payload("Wardbook notifications are on",
+                           f"Test sent at {when}. You will get message and update alerts from your neighbours here.",
+                           "/notifications/", f"test-{int(time.time())}")
     results = _deliver(subs, payload)
     delivered = sum(1 for _, status, _ in results if status and status < 300)
     problems = []
