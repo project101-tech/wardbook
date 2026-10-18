@@ -286,6 +286,8 @@ class GameChallenge(models.Model):
         TIC_TAC_TOE = "tic_tac_toe", "Tic-tac-toe"
         CONNECT_FOUR = "connect_four", "Connect Four"
         SNAKES_LADDERS = "snakes_ladders", "Snakes and Ladders"
+        LUDO = "ludo", "Ludo"
+        CHESS = "chess", "Chess"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
@@ -323,9 +325,15 @@ class GameSession(models.Model):
 
 
 class GameParticipant(models.Model):
+    class Response(models.TextChoices):
+        PENDING = "pending", "Pending"
+        ACCEPTED = "accepted", "Accepted"
+        DECLINED = "declined", "Declined"
+
     challenge = models.ForeignKey(GameChallenge, on_delete=models.CASCADE, related_name="participantships")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="game_participations")
     seat = models.PositiveSmallIntegerField()
+    response = models.CharField(max_length=10, choices=Response.choices, default=Response.ACCEPTED)  # Ludo / Snakes: 2-4 players
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["challenge", "user"], name="one_game_participant")]

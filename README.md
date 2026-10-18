@@ -73,4 +73,4 @@ render.yaml          Render blueprint (web service + Postgres)
 
 ## Next
 
-Accepted invitations now open live 1v1 sessions with server-validated turns, polling, presence heartbeats, online profile tags, private in-game chat, rematch and exit controls. Ludo and Snakes and Ladders use boards, and Chess validates pawn movement and sliding-piece blockers. A WebSocket transport can replace polling later for lower latency.
+Games: Tic-tac-toe, Connect Four, Snakes & Ladders, Ludo (2-4 players) and Chess (with clocks and draw offers). Rules live in `core/gamelogic.py` and `core/chess_engine.py` (plain Python, no Django); views in `core/game_views.py`; the screens in `static/js/games*.js`. Moves are validated on the server, and the screens update live through the same long-poll channel as chat.

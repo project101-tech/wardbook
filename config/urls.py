@@ -4,7 +4,7 @@ from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import path
 
-from core import live, views
+from core import game_views, live, views
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -37,14 +37,16 @@ urlpatterns = [
     path("communities/<int:pk>/", views.community_detail, name="community_detail"),
     path("communities/<int:pk>/post/", views.community_post, name="community_post"),
     path("communities/<int:pk>/event/", views.community_event, name="community_event"),
-    path("games/", views.games, name="games"),
-    path("games/challenge/", views.game_challenge, name="game_challenge"),
-    path("games/<int:pk>/update/", views.game_update, name="game_update"),
-    path("games/session/<int:pk>/", views.game_play, name="game_play"),
-    path("games/session/<int:pk>/state/", views.game_state, name="game_state"),
-    path("games/session/<int:pk>/move/", views.game_move, name="game_move"),
-    path("games/session/<int:pk>/chat/", views.game_chat, name="game_chat"),
-    path("games/session/<int:pk>/rematch/", views.game_rematch, name="game_rematch"),
+    path("games/", game_views.games, name="games"),
+    path("games/challenge/", game_views.game_challenge, name="game_challenge"),
+    path("games/<int:pk>/start/", game_views.game_start, name="game_start"),
+    path("games/<int:pk>/cancel/", game_views.game_cancel, name="game_cancel"),
+    path("games/<int:pk>/update/", game_views.game_update, name="game_update"),
+    path("games/session/<int:pk>/", game_views.game_play, name="game_play"),
+    path("games/session/<int:pk>/state/", game_views.game_state, name="game_state"),
+    path("games/session/<int:pk>/move/", game_views.game_move, name="game_move"),
+    path("games/session/<int:pk>/chat/", game_views.game_chat, name="game_chat"),
+    path("games/session/<int:pk>/rematch/", game_views.game_rematch, name="game_rematch"),
     path("presence/", views.presence, name="presence"),
     path("push/subscribe/", views.push_subscribe, name="push_subscribe"),
     path("push/unsubscribe/", views.push_unsubscribe, name="push_unsubscribe"),
