@@ -197,7 +197,7 @@
       if (!p.active) {
         var f = G.el('form', { method: 'post', action: urls.rematch, style: 'display:inline' });
         f.appendChild(G.el('input', { type: 'hidden', name: 'csrfmiddlewaretoken', value: csrf }));
-        f.appendChild(G.el('button', { class: 'gm-btn', style: 'background:var(--wb-accent);color:#fff;border-color:var(--wb-accent)' }, [G.el('i', { class: 'bi bi-arrow-repeat' }), 'Play again']));
+        f.appendChild(G.el('button', { class: 'gm-btn', style: 'background:var(--wb-accent);color:#fff;border-color:var(--wb-accent)' }, [G.el('i', { class: 'bi bi-arrow-repeat' }), p.game === 'teen_patti' ? 'New table' : 'Play again']));
         actionsEl.appendChild(f);
         actionsEl.appendChild(G.el('a', { class: 'gm-btn', href: urls.games }, [G.el('i', { class: 'bi bi-grid' }), 'All games']));
       }

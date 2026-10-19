@@ -127,6 +127,21 @@ class AnnouncementResponse(models.Model):
         return f"{self.user.display_name}: {self.get_answer_display()}"
 
 
+class EventPoke(models.Model):
+    """"Are you coming too?" A resident who is going to an event nudges a neighbour who has not answered yet."""
+    announcement = models.ForeignKey(Announcement, on_delete=models.CASCADE, related_name="pokes")
+    sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="pokes_sent")
+    target = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="pokes_received")
+    poked_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["announcement", "sender", "target"], name="one_poke_per_pair")]
+        ordering = ["-poked_at"]
+
+    def __str__(self):
+        return f"{self.sender.display_name} poked {self.target.display_name} about {self.announcement.title}"
+
+
 # --------------------------------------------------------------------------
 # Manual UPI payments
 # --------------------------------------------------------------------------
@@ -215,6 +230,7 @@ class Notification(models.Model):
         GAME = "game", "Game invite"
         COMMUNITY = "community", "Community"
         TOWN_SQUARE = "town_square", "Town Square"
+        POKE = "poke", "Poke"
         SYSTEM = "system", "Update"
 
     recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications")
@@ -288,6 +304,7 @@ class GameChallenge(models.Model):
         SNAKES_LADDERS = "snakes_ladders", "Snakes and Ladders"
         LUDO = "ludo", "Ludo"
         CHESS = "chess", "Chess"
+        TEEN_PATTI = "teen_patti", "Teen Patti"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
@@ -435,3 +452,15 @@ class TypingIndicator(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(fields=["thread_key", "user"], name="one_typing_indicator_per_thread")]
         indexes = [models.Index(fields=["thread_key", "updated_at"])]
+
+
+class GameWallet(models.Model):
+    """Play money for Teen Patti. Everyone starts with 50 tokens (each token = 10 rupees of pretend money, so 500)."""
+    START_TOKENS = 50
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="game_wallet")
+    tokens = models.PositiveIntegerField(default=START_TOKENS)
+    last_refill = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.display_name}: {self.tokens} tokens"

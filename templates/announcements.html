@@ -1,5 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Notices{% endblock %}
+{% block head %}<style>
+  .poke-banner { background: #fff7e0; border: 1px solid #f5d98b; border-radius: 12px; padding: .5rem .75rem; font-weight: 600; font-size: .9rem; margin-top: .75rem; }
+  .poke-box summary { cursor: pointer; font-weight: 600; color: var(--wb-accent); list-style: none; }
+  .poke-box summary::-webkit-details-marker { display: none; }
+  .poke-list { max-height: 260px; overflow: auto; margin-top: .5rem; }
+  .poke-row { display: flex; align-items: center; gap: .6rem; padding: .35rem .2rem; border-bottom: 1px solid #eef0f4; }
+  .poke-row .nm { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .poke-row .hs { font-weight: 400; color: var(--wb-muted); font-size: .8rem; margin-left: .35rem; }
+</style>{% endblock %}
 
 {% block content %}
 <h1 class="page-title h3 mb-1">Notices</h1>
@@ -32,6 +41,9 @@
     {% endfor %}
 
     {% if n.category == 'event' %}
+      {% if n.pokers %}
+        <div class="poke-banner">👉 {{ n.pokers|join:", " }} poked you: are you coming?</div>
+      {% endif %}
       {% if n.is_upcoming %}
         <form method="post" action="{% url 'respond' n.id %}" class="d-flex gap-2 mt-3">
           {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
@@ -45,6 +57,13 @@
         {% if n.my %}<div class="small text-muted mt-1">Changed your mind? Tap your answer again to undo it, or tap the other button to switch.</div>{% endif %}
       {% else %}
         <div class="small text-muted mt-3"><i class="bi bi-clock-history me-1"></i>This event has already started, so RSVPs are closed.</div>
+      {% endif %}
+      {% if n.can_poke %}
+        <details class="poke-box mt-3" data-poke="{{ n.id }}">
+          <summary><i class="bi bi-hand-index-thumb me-1"></i>Poke a neighbour who hasn't replied</summary>
+          <input type="search" class="form-control form-control-sm mt-2" placeholder="Search by name or house…" autocomplete="off">
+          <div class="poke-list"></div>
+        </details>
       {% endif %}
       <div class="small text-muted mt-2">{{ n.n_going }} going · {{ n.n_no }} can't make it</div>
       {% if n.going_list %}
@@ -71,4 +90,43 @@
     <i class="bi bi-megaphone fs-1 d-block mb-2"></i>No notices yet.
   </div>
 {% endfor %}
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var csrf = '{{ csrf_token }}';
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
+  document.querySelectorAll('details[data-poke]').forEach(function (box) {
+    var id = box.dataset.poke, input = box.querySelector('input'), list = box.querySelector('.poke-list'), timer = null, seq = 0;
+    function say(text) { list.replaceChildren(el('div', 'text-muted small py-2', text)); }
+    function load() {
+      var my = ++seq;
+      fetch('/notices/' + id + '/poke/people/?q=' + encodeURIComponent(input.value.trim()), { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (my !== seq) return;
+          if (j.error) return say(j.error);
+          if (!j.people.length) return say(input.value.trim() ? 'No one matches.' : 'Everyone has replied. Nice!');
+          list.replaceChildren();
+          j.people.forEach(function (p) {
+            var row = el('div', 'poke-row'), name = el('div', 'nm', p.name);
+            if (p.house) name.appendChild(el('span', 'hs', 'House ' + p.house));
+            var b = el('button', 'btn btn-soft btn-sm', p.poked ? 'Poked \u2713' : 'Poke'); b.type = 'button'; b.disabled = p.poked;
+            b.onclick = function () {
+              b.disabled = true;
+              var fd = new FormData(); fd.append('target', p.id);
+              fetch('/notices/' + id + '/poke/', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRFToken': csrf }, body: fd })
+                .then(function (r) { return r.json(); })
+                .then(function (j) { b.textContent = j.ok ? 'Poked \u2713' : 'Poke'; if (!j.ok) { b.disabled = false; } b.title = j.error || j.message || ''; if (j.error) alert(j.error); })
+                .catch(function () { b.disabled = false; });
+            };
+            row.appendChild(name); row.appendChild(b); list.appendChild(row);
+          });
+        }).catch(function () { say('Could not load. Try again.'); });
+    }
+    box.addEventListener('toggle', function () { if (box.open) { say('Loading\u2026'); load(); } });
+    input.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(load, 200); });
+  });
+})();
+</script>
 {% endblock %}

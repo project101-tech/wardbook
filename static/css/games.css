@@ -8,6 +8,9 @@
 /* ============================ LOBBY ============================ */
 .lb-hero { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between; margin-bottom: 1.1rem; }
 .lb-stats { display: flex; gap: .5rem; }
+.lb-wallet { display: flex; align-items: center; gap: .6rem; background: linear-gradient(135deg, #fff8e1, #ffeeb0); border: 1px solid #f2d27a; border-radius: 16px; padding: .4rem .8rem; }
+.lb-wallet .coin { font-size: 1.6rem; line-height: 1; } .lb-wallet b { font-size: 1.2rem; } .lb-wallet small { display: block; color: #8a6d1a; font-size: .72rem; line-height: 1.1; }
+.lb-wallet form { margin: 0; }
 .lb-stat { background: #fff; border: 1px solid var(--g-line); border-radius: 14px; padding: .45rem .9rem; text-align: center; min-width: 74px; }
 .lb-stat b { display: block; font-size: 1.3rem; line-height: 1.1; }
 .lb-stat span { font-size: .7rem; color: var(--wb-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
@@ -227,3 +230,61 @@
 /* tokens only catch taps when they can move (so stacked tokens never block each other) */
 .ludo-tok { pointer-events: none; } .ludo-tok.can { pointer-events: auto; }
 .sl-tok { pointer-events: none; }
+
+/* ======================= Teen Patti ======================= */
+.gcard.tp { background: linear-gradient(145deg, #1a9a63, #0a4d33); }
+.lrow .ico.tp { background: #0f6b44; }
+.tk { display: inline-flex; align-items: center; gap: .28em; font-weight: 800; font-variant-numeric: tabular-nums; }
+.tk i { width: 1.05em; height: 1.05em; border-radius: 50%; display: inline-block; background: radial-gradient(circle at 35% 30%, #ffe27a, #f2b01e 55%, #c98a0a); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .55), 0 1px 1px rgba(0, 0, 0, .3); }
+.tk.big { font-size: 1.9rem; line-height: 1; }
+.lb-wallet .coin { width: 1.7rem; height: 1.7rem; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffe27a, #f2b01e 55%, #c98a0a); box-shadow: inset 0 0 0 3px rgba(255, 255, 255, .6); display: inline-block; font-size: 0; }
+.tp-stage { margin-top: .6rem; }
+.tp { display: flex; flex-direction: column; gap: .7rem; }
+.tp-felt { position: relative; border-radius: 26px; padding: 1rem .9rem .8rem; text-align: center; color: #fff; background: radial-gradient(ellipse at 50% 35%, #1c9a66, #0b5a3a 70%, #083f29); box-shadow: inset 0 0 0 6px #5a3a1c, inset 0 0 0 8px #8a5d2f, 0 10px 26px rgba(8, 63, 41, .35); }
+.tp-pot { padding: .25rem 0 .1rem; } .tp-pot .lbl { font-size: .7rem; letter-spacing: .16em; opacity: .75; font-weight: 800; }
+.tp-pot .sub { font-size: .76rem; opacity: .85; margin-top: .15rem; }
+.tp-banner { display: none; margin: .5rem auto 0; max-width: 460px; background: #fff7e0; color: #5b4300; border-radius: 12px; padding: .4rem .7rem; font-weight: 700; font-size: .86rem; }
+.tp-banner.on { display: block; }
+.tp-timer { position: relative; height: 22px; margin: .7rem auto 0; max-width: 340px; border-radius: 999px; background: rgba(0, 0, 0, .28); overflow: hidden; }
+.tp-timer i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #5bd79a, #2fb872); transition: width .25s linear; }
+.tp-timer.low i { background: linear-gradient(90deg, #ff9f6b, #ef4444); }
+.tp-timer span { position: relative; font-size: .75rem; font-weight: 800; line-height: 22px; }
+.tp-reveal { display: none; border-radius: 16px; background: #fff; border: 2px solid var(--g-line); padding: .6rem .8rem; }
+.tp-reveal.show { display: block; animation: tpIn .35s ease-out; } .tp-reveal.mine { border-color: #22a35a; background: #f0fbf5; }
+.tp-reveal h3 { font-size: 1rem; font-weight: 800; margin: 0 0 .35rem; }
+.tp-reveal .hand { display: flex; align-items: center; gap: .6rem; padding: .25rem .3rem; border-radius: 10px; }
+.tp-reveal .hand.win { background: #e6f7ee; } .tp-reveal .hand .nm { width: 4.5rem; font-weight: 700; font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-reveal .hand .cs { display: flex; gap: 3px; } .tp-reveal .hand .hn { font-size: .8rem; color: var(--wb-muted); font-weight: 600; }
+.tp-reveal .note { font-size: .82rem; color: var(--wb-muted); }
+.tp-reveal .rrow { display: flex; justify-content: space-between; padding: .3rem .2rem; border-bottom: 1px solid #eef0f4; } .tp-reveal .rrow.me { font-weight: 800; }
+.net.up { color: #16864a; font-weight: 800; } .net.down { color: #d33a4a; font-weight: 800; }
+.tp-me { text-align: center; }
+.tp-cards { display: flex; justify-content: center; gap: .55rem; padding: .3rem 0; min-height: 110px; }
+.tp-cards.can-see { cursor: pointer; }
+.tp-card { width: clamp(64px, 20vw, 92px); aspect-ratio: 5 / 7; border-radius: 12px; position: relative; box-shadow: 0 5px 12px rgba(20, 30, 50, .28); flex: none; }
+.tp-card.face { background: #fff; border: 1px solid #d9dee8; color: #1c1e21; } .tp-card.face.red { color: #d62839; }
+.tp-card .cn { position: absolute; font-weight: 800; font-size: clamp(.85rem, 3.2vw, 1.15rem); line-height: 1; font-family: Georgia, 'Times New Roman', serif; }
+.tp-card .cn.tl { top: 7px; left: 8px; } .tp-card .cn.br { bottom: 7px; right: 8px; transform: rotate(180deg); }
+.tp-card .cs { position: absolute; inset: 0; display: grid; place-items: center; font-size: clamp(2rem, 8vw, 3.1rem); }
+.tp-card.back { background: repeating-linear-gradient(45deg, #1c4fb8 0 8px, #2a64d6 8px 16px); border: 3px solid #fff; box-shadow: 0 5px 12px rgba(20, 30, 50, .28), inset 0 0 0 2px #163d8f; }
+.tp-card.back::after { content: "W"; position: absolute; inset: 0; display: grid; place-items: center; color: rgba(255, 255, 255, .85); font-weight: 900; font-size: 1.6rem; }
+.tp-card.flipped { animation: tpFlip .45s ease-out; } .tp-card.dim { opacity: .45; filter: grayscale(.6); }
+.tp-card.mini { width: 30px; border-radius: 5px; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); } .tp-card.mini .cn { font-size: .62rem; top: 3px; left: 3px; } .tp-card.mini .cn.br { display: none; } .tp-card.mini .cs { font-size: .95rem; padding-top: .55rem; }
+.tp-card.deal { animation: tpDeal .5s cubic-bezier(.2, .8, .3, 1) both; } .tp-card.d1 { animation-delay: .1s; } .tp-card.d2 { animation-delay: .2s; }
+.tp-handname { font-weight: 800; margin-top: .2rem; color: var(--wb-muted); } .tp-handname.seen { color: #0b6b3f; }
+.tp-mystack { font-size: .9rem; margin-top: .15rem; color: #4a5260; } .tp-mystack small { color: var(--wb-muted); }
+.tp-acts { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; }
+.tp-btn { border: 0; border-radius: 14px; padding: .7rem 1rem; font-weight: 800; font-size: .95rem; min-width: 104px; display: inline-flex; gap: .4rem; align-items: center; justify-content: center; box-shadow: 0 3px 0 rgba(0, 0, 0, .18); transition: transform .08s; }
+.tp-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, .18); } .tp-btn:disabled { opacity: .55; }
+.tp-btn.bet { background: #22a35a; color: #fff; } .tp-btn.raise { background: #f2b01e; color: #3b2a00; } .tp-btn.show { background: #7c5ce0; color: #fff; }
+.tp-btn.side { background: #1877f2; color: #fff; } .tp-btn.see { background: #e8f0fe; color: #1558b8; } .tp-btn.pack { background: #fde8ec; color: #c42b3d; } .tp-btn.ghost { background: #eef0f4; color: #4a5260; }
+.tp-note { width: 100%; text-align: center; color: var(--wb-muted); font-size: .88rem; }
+.tp-log { display: flex; flex-direction: column; gap: 2px; max-height: 150px; overflow: auto; font-size: .8rem; color: #6b7280; border-top: 1px dashed var(--g-line); padding-top: .5rem; }
+.tp-log .ln:first-child { color: #1c1e21; font-weight: 700; } .tp-log .ln.win { color: #16864a; font-weight: 800; }
+.tp-stack { font-size: .9rem; margin-left: auto; }
+@keyframes tpFlip { 0% { transform: rotateY(90deg) scale(.9); } 100% { transform: rotateY(0); } }
+@keyframes tpDeal { 0% { transform: translateY(-120px) scale(.5) rotate(-12deg); opacity: 0; } 100% { transform: none; opacity: 1; } }
+@keyframes tpIn { 0% { transform: translateY(8px); opacity: 0; } 100% { transform: none; opacity: 1; } }
+.gm.tp-game .gm-player .gav { display: none; }
+.gm.tp-game .gm-player { padding: .45rem .65rem; }
+.gm.tp-game .gm-player .nm { font-size: .95rem; }

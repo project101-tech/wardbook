@@ -24,7 +24,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from . import live, push
-from .models import (Announcement, AnnouncementResponse, ChatGroup, Comment, Community, CommunityEvent,
+from .models import (Announcement, AnnouncementResponse, ChatGroup, Comment, Community, CommunityEvent, EventPoke,
                      CommunityMember, CommunityPost, GameChallenge, GameChatMessage, GameParticipant, GameSession, GroupMember, Message, Notification, Payment, PaymentRequest, Post,
                      TypingIndicator,
                      PushSubscription, ResidentProfile)
@@ -69,9 +69,10 @@ def notify(user, title, body="", url="", kind=Notification.Kind.SYSTEM, actor=No
                   tag=f"chat:{url}" if chat and url else f"n{n.pk}", collapse=chat, kind=kind)
 
 
-def notify_mentions(text, actor, url, title="You were mentioned"):
-    handles = set(re.findall(r"@([A-Za-z0-9_.-]+)", text or ""))
-    for user in User.objects.filter(username__in=handles, is_active=True):
+def notify_mentions(text, actor, url, title="You were mentioned", only_user_ids=None):
+    """Notify everyone tagged with @Name. `only_user_ids` limits it to the people who can see the place (a group, a community)."""
+    from .social import resolve_mentions
+    for user in resolve_mentions(text, only_user_ids):
         notify(user, title, f"{actor.display_name} mentioned you.", url, Notification.Kind.MENTION, actor)
 
 
@@ -165,7 +166,7 @@ class PostForm(forms.ModelForm):
         fields = ["body", "image"]
         widgets = {
             "body": forms.Textarea(attrs={"rows": 2, "placeholder": "Share something with your neighbours…",
-                                          "class": "form-control"}),
+                                          "class": "form-control", "data-mention": "all"}),
             "image": forms.FileInput(attrs={"accept": "image/*", "class": "d-none", "id": "post-image"}),
         }
 
@@ -455,8 +456,13 @@ def announcements(request):
         .order_by("-is_pinned", "-created_at")
     )
     mine = dict(AnnouncementResponse.objects.filter(user=request.user).values_list("announcement_id", "answer"))
+    pokers = {}
+    for pk_, sender in EventPoke.objects.filter(target=request.user).select_related("sender").order_by("poked_at").values_list("announcement_id", "sender__first_name"):
+        pokers.setdefault(pk_, []).append(sender)
     for n in notices:
         n.my = mine.get(n.id)  # what I answered, or None
+        n.pokers = [] if n.my else pokers.get(n.id, [])             # neighbours who poked me and are still waiting for my answer
+        n.can_poke = n.category == Announcement.Category.EVENT and n.is_upcoming and n.my == A.GOING
     return render(request, "announcements.html", {"notices": notices})
 
 
@@ -731,7 +737,9 @@ def post_message(request, **target):
         for member in m.group.members.exclude(pk=request.user.pk):
             notify(member, f"New message in {m.group.name}", m.preview,
                    reverse("group", args=[m.group_id]), Notification.Kind.MESSAGE, request.user)
-    notify_mentions(m.body, request.user, reverse("conversation", args=[m.recipient_id]) if m.recipient_id else reverse("group", args=[m.group_id]))
+    if m.group_id:
+        notify_mentions(m.body, request.user, reverse("group", args=[m.group_id]), f"You were mentioned in {m.group.name}",
+                        set(m.group.members.values_list("pk", flat=True)))
     receipt = dm_receipt(request.user, m.recipient) if m.recipient_id else group_receipt(request.user, m.group)
     return JsonResponse({"messages": [as_json(m, request.user)], "receipt": receipt})
 
@@ -961,7 +969,8 @@ def community_post(request, pk):
     body = request.POST.get("body", "").strip()[:2000]
     if body:
         post = CommunityPost.objects.create(community=community, author=request.user, body=body)
-        notify_mentions(body, request.user, reverse("community_detail", args=[pk]), f"You were mentioned in {community.name}")
+        notify_mentions(body, request.user, reverse("community_detail", args=[pk]), f"You were mentioned in {community.name}",
+                        set(community.members.values_list("pk", flat=True)))
         for member in community.members.exclude(pk=request.user.pk):
             notify(member, f"New post in {community.name}", body[:120], reverse("community_detail", args=[pk]),
                    Notification.Kind.COMMUNITY, request.user)

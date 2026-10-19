@@ -5,13 +5,15 @@ who may do what, saving, notifications and the JSON the game screen needs.
 """
 import re
 import time
+from datetime import timedelta
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, F, Q
+from django.utils import timezone
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -19,7 +21,8 @@ from django.views.decorators.http import require_POST
 
 from . import chess_engine as chess
 from . import gamelogic as logic
-from .models import GameChallenge, GameChatMessage, GameParticipant, GameSession, Notification
+from . import teenpatti_engine as tpe
+from .models import GameChallenge, GameChatMessage, GameParticipant, GameSession, GameWallet, Notification
 from .views import fmt_time, notify, residents_except
 
 User = get_user_model()
@@ -27,19 +30,25 @@ Game = GameChallenge.Game
 
 # What the lobby shows for each game (order = order on the page).
 GAME_CARDS = [
+    {"key": Game.TEEN_PATTI, "label": "Teen Patti", "blurb": "Flash with play money: blind or seen, side shows, a big pot. Up to 9 at one table.",
+     "who": "2 to 9 players", "party": True, "max": 8, "glyph": "♠", "theme": "tp"},
     {"key": Game.CHESS, "label": "Chess", "blurb": "The full game with clocks, castling, en passant and draw offers.",
-     "who": "2 players", "party": False, "glyph": "♞", "theme": "chess"},
+     "who": "2 players", "party": False, "max": 1, "glyph": "♞", "theme": "chess"},
     {"key": Game.LUDO, "label": "Ludo", "blurb": "Roll a six to start. Race four tokens home and send rivals back to the yard.",
-     "who": "2 to 4 players", "party": True, "glyph": "🎲", "theme": "ludo"},
+     "who": "2 to 4 players", "party": True, "max": 3, "glyph": "🎲", "theme": "ludo"},
     {"key": Game.SNAKES_LADDERS, "label": "Snakes & Ladders", "blurb": "Climb the ladders, dodge the snakes, reach 100 on an exact roll.",
-     "who": "2 to 4 players", "party": True, "glyph": "🐍", "theme": "snakes"},
+     "who": "2 to 4 players", "party": True, "max": 3, "glyph": "🐍", "theme": "snakes"},
     {"key": Game.CONNECT_FOUR, "label": "Connect Four", "blurb": "Drop discs and line up four before your neighbour does.",
-     "who": "2 players", "party": False, "glyph": "●", "theme": "c4"},
+     "who": "2 players", "party": False, "max": 1, "glyph": "●", "theme": "c4"},
     {"key": Game.TIC_TAC_TOE, "label": "Tic-tac-toe", "blurb": "Quick three-in-a-row. Perfect for a spare minute.",
-     "who": "2 players", "party": False, "glyph": "✕", "theme": "ttt"},
+     "who": "2 players", "party": False, "max": 1, "glyph": "✕", "theme": "ttt"},
 ]
 CARD_BY_KEY = {c["key"]: c for c in GAME_CARDS}
 CHESS_CLOCKS = {"3": "3 min", "5": "5 min", "10": "10 min", "15": "15 min", "30": "30 min"}
+TP_BOOTS = {"10": "₹10 boot", "20": "₹20 boot", "50": "₹50 boot"}      # rupees of pretend money; 10 rupees = 1 token
+TP_MAX_BUYIN = 200
+TP_REFILL_BELOW = 10
+TP_REFILL_TO = 50
 CHESS_REASONS = {
     "checkmate": "Checkmate", "stalemate": "Stalemate", "insufficient": "Not enough pieces to checkmate",
     "repetition": "Same position three times", "fifty": "50 moves without a capture or pawn move",
@@ -50,6 +59,31 @@ CHESS_REASONS = {
 
 def now_ms():
     return int(time.time() * 1000)
+
+
+def boot_of(challenge):
+    """Teen Patti: the boot (entry stake) in tokens, kept as text like "₹20 boot" on the challenge."""
+    m = re.search(r"(\d+)", challenge.time_control or "")
+    return max(1, int(m.group(1)) // 10) if m else 1
+
+
+class TableError(Exception):
+    pass
+
+
+def wallet_of(user, lock=False):
+    qs = GameWallet.objects.select_for_update() if lock else GameWallet.objects
+    wallet, _ = qs.get_or_create(user=user)
+    return wallet
+
+
+def wallet_info(user):
+    w = wallet_of(user)
+    wait = None
+    if w.last_refill and timezone.now() < w.last_refill + timedelta(hours=24):
+        wait = int((w.last_refill + timedelta(hours=24) - timezone.now()).total_seconds() // 3600) + 1
+    return {"tokens": w.tokens, "rupees": w.tokens * 10, "can_refill": w.tokens < TP_REFILL_BELOW and wait is None,
+            "refill_wait": wait if w.tokens < TP_REFILL_BELOW else None}
 
 
 def minutes_of(challenge):
@@ -131,7 +165,8 @@ def games(request):
         "received": [received_row(c) for c in received], "waiting": [waiting_row(c) for c in waiting],
         "active": active_rows, "recent": [recent_row(c) for c in recent],
         "stats": {"wins": wins, "losses": total - wins - draws, "draws": draws, "played": total},
-        "leaderboard": leaderboard,
+        "leaderboard": leaderboard, "wallet": wallet_info(me),
+        "boots": [{"k": k, "label": v, "tokens": int(k) // 10} for k, v in TP_BOOTS.items()],
     })
 
 
@@ -147,15 +182,22 @@ def game_challenge(request):
         if value.isdigit() and int(value) not in ids and int(value) != request.user.pk:
             ids.append(int(value))
     party = game in logic.PARTY
-    if len(ids) < 1 or len(ids) > (3 if party else 1):
-        messages.error(request, "Pick 1 to 3 neighbours." if party else "Pick one neighbour to play against.")
+    most = CARD_BY_KEY[game]["max"]
+    if len(ids) < 1 or len(ids) > most:
+        messages.error(request, f"Pick 1 to {most} neighbours." if party else "Pick one neighbour to play against.")
         return redirect("games")
     people = {r.pk: r for r in residents_except(request.user).filter(pk__in=ids)}
     if len(people) != len(ids):
         messages.error(request, "One of those neighbours cannot be invited.")
         return redirect("games")
-    clock = request.POST.get("time_control", "") if game == Game.CHESS else ""
-    clock = CHESS_CLOCKS.get(clock, "")
+    if game == Game.TEEN_PATTI:
+        clock = TP_BOOTS.get(request.POST.get("boot", ""), TP_BOOTS["10"])
+        if wallet_of(request.user).tokens < boot_of(GameChallenge(time_control=clock)) * tpe.MIN_BUYIN_HANDS:
+            messages.error(request, "You do not have enough tokens for that table. Try a smaller boot, or refill from the Games page.")
+            return redirect("games")
+    else:
+        clock = request.POST.get("time_control", "") if game == Game.CHESS else ""
+        clock = CHESS_CLOCKS.get(clock, "")
     challenge = GameChallenge.objects.create(game=game, challenger=request.user, opponent=people[ids[0]], time_control=clock)
     GameParticipant.objects.create(challenge=challenge, user=request.user, seat=0, response=GameParticipant.Response.ACCEPTED)
     for seat, uid in enumerate(ids, start=1):
@@ -176,8 +218,43 @@ def session_for_challenge(challenge):
     if not parts:
         GameParticipant.objects.get_or_create(challenge=challenge, user_id=challenge.challenger_id, defaults={"seat": 0})
         GameParticipant.objects.get_or_create(challenge=challenge, user_id=challenge.opponent_id, defaults={"seat": 1})
-    state, first = logic.new_state(challenge.game, players, minutes_of(challenge))
+    if challenge.game == Game.TEEN_PATTI:
+        state, first = _open_table(challenge, players)
+    else:
+        state, first = logic.new_state(challenge.game, players, minutes_of(challenge))
     return GameSession.objects.create(challenge=challenge, state=state, current_turn_id=first)
+
+
+def _open_table(challenge, players):
+    """Everyone sits down with their tokens (up to TP_MAX_BUYIN). Anyone who cannot afford the table is left out."""
+    boot = boot_of(challenge)
+    need = boot * tpe.MIN_BUYIN_HANDS
+    wallets = {uid: wallet_of(User.objects.get(pk=uid), lock=True) for uid in players}
+    seated = [uid for uid in players if wallets[uid].tokens >= need]
+    if len(seated) < 2:
+        raise TableError(f"Not enough players have {need} tokens (\u20b9{need * 10}) for a {TP_BOOTS.get(str(boot * 10), 'this')} table.")
+    buyins = {uid: min(wallets[uid].tokens, TP_MAX_BUYIN) for uid in seated}
+    for uid in seated:
+        GameWallet.objects.filter(pk=wallets[uid].pk).update(tokens=F("tokens") - buyins[uid])
+    import random
+    random.SystemRandom().shuffle(seated)                       # random seats
+    state = tpe.new_table(seated, boot, buyins, now_ms())
+    return state, tpe.info(state)["next"]
+
+
+def _try_start(request, challenge):
+    """Start a game; if a Teen Patti table cannot be opened, tell everyone and call the invitation off."""
+    try:
+        return _start(challenge)
+    except TableError as e:
+        challenge.status = GameChallenge.Status.DECLINED
+        challenge.save(update_fields=["status"])
+        messages.error(request, str(e))
+        for p in challenge.participantships.exclude(user=request.user).select_related("user"):
+            if p.response == GameParticipant.Response.ACCEPTED:
+                notify(p.user, f"Your {challenge.get_game_display()} table was cancelled", str(e), reverse("games"),
+                       Notification.Kind.GAME, request.user)
+        return None
 
 
 def _start(challenge):
@@ -221,7 +298,9 @@ def game_update(request, pk):
                reverse("games"), Notification.Kind.GAME, request.user)
         if not waiting:
             if len(joined) >= 2:
-                session = _start(challenge)
+                session = _try_start(request, challenge)
+                if session is None:
+                    return redirect("games")
                 for p in joined:
                     notify(p.user, f"Your {game_name} game is starting", "Everyone has answered. Tap to play.",
                            reverse("game_play", args=[session.pk]), Notification.Kind.GAME, request.user)
@@ -243,11 +322,32 @@ def game_start(request, pk):
             messages.error(request, "Wait until at least one neighbour has joined.")
             return redirect("games")
         challenge.participantships.filter(response=GameParticipant.Response.PENDING).update(response=GameParticipant.Response.DECLINED)
-        session = _start(challenge)
+        session = _try_start(request, challenge)
+        if session is None:
+            return redirect("games")
         for p in joined.exclude(user=request.user).select_related("user"):
             notify(p.user, f"Your {challenge.get_game_display()} game is starting", "Tap to play.",
                    reverse("game_play", args=[session.pk]), Notification.Kind.GAME, request.user)
     return redirect("game_play", pk=session.pk)
+
+
+@login_required
+@require_POST
+def wallet_refill(request):
+    """A free top-up for someone who is (nearly) out of tokens: once a day, back up to 50 tokens."""
+    with transaction.atomic():
+        wallet = wallet_of(request.user, lock=True)
+        now = timezone.now()
+        if wallet.tokens >= TP_REFILL_BELOW:
+            messages.info(request, "You still have plenty of tokens.")
+        elif wallet.last_refill and now < wallet.last_refill + timedelta(hours=24):
+            messages.warning(request, "You can refill once a day. Try again later.")
+        else:
+            wallet.tokens = TP_REFILL_TO
+            wallet.last_refill = now
+            wallet.save(update_fields=["tokens", "last_refill"])
+            messages.success(request, f"Your wallet is topped up to {TP_REFILL_TO} tokens.")
+    return redirect("games")
 
 
 @login_required
@@ -290,7 +390,12 @@ def game_payload(session, user):
         players.append({"id": pid, "name": u.display_name, "house": getattr(u, "house", ""), "seat": seat,
                         "online": u.profile.is_online, "initial": (u.display_name[:1] or "?").upper(),
                         "avatar": _avatar(u), "symbol": state.get("symbols", {}).get(str(pid), "")})
-    clean = chess.public_state(state) if ch.game == Game.CHESS else dict(state)
+    if ch.game == Game.CHESS:
+        clean = chess.public_state(state)
+    elif ch.game == Game.TEEN_PATTI:
+        clean = {}                                   # the table's own state holds everyone's cards: never sent
+    else:
+        clean = dict(state)
     turn_is_me = session.is_active and session.current_turn_id == user.id
     out = {"game": ch.game, "label": ch.get_game_display(), "active": session.is_active, "state": clean,
            "turn": session.current_turn_id, "you": user.id, "players": players, "winner": session.winner_id,
@@ -303,6 +408,11 @@ def game_payload(session, user):
         out["legal"] = chess.legal_map(state) if turn_is_me else {}
         out["clock"] = chess.clock_view(state, out["server_now"])
         out["you_side"] = chess.side_of(state, user.id)
+    elif ch.game == Game.TEEN_PATTI:
+        pv = tpe.public_view(state, user.id, out["server_now"])
+        out["tp"] = pv
+        out["turn"] = pv["turn"] if pv["phase"] == "bet" else (pv["side"]["to"] if pv["phase"] == "sideshow" else None)
+        out["wallet"] = wallet_info(user)
     elif ch.game == Game.LUDO:
         dice = state.get("dice")
         out["movable"] = logic.ludo_movable(state, user.id, dice) if (dice and turn_is_me) else []
@@ -330,6 +440,10 @@ def _save(session, info):
     """Write the outcome of a move back to the database."""
     challenge, state = session.challenge, session.state
     session.current_turn_id = info["next"]
+    if challenge.game == Game.TEEN_PATTI:
+        for uid, amount in state.get("payouts", {}).items():       # tokens leaving the table go back to wallets
+            GameWallet.objects.filter(user_id=int(uid)).update(tokens=F("tokens") + amount)
+        state["payouts"] = {}
     state["seq"] = state.get("seq", 0) + 1          # lets the screen tell a new move from a re-sent one
     if info["finished"]:
         state["reason"] = info["reason"]
@@ -367,6 +481,16 @@ def _settle_clock(session):
     return False
 
 
+def _settle_table(session):
+    """Teen Patti: a turn timer ran out (auto-pack), or the pause between hands is over. True if anything changed."""
+    if session.challenge.game != Game.TEEN_PATTI or not session.is_active:
+        return False
+    if tpe.settle(session.state, now_ms()):
+        _save(session, tpe.info(session.state))
+        return True
+    return False
+
+
 @login_required
 @require_POST
 def game_move(request, pk):
@@ -381,6 +505,7 @@ def game_move(request, pk):
                 body["error"] = error
             return JsonResponse(body, status=status)
 
+        _settle_table(session)
         if not session.is_active:
             return reply("This game is over.", 400)
         if _settle_clock(session):
@@ -390,7 +515,16 @@ def game_move(request, pk):
         value = request.POST.get("move", "")
         my_turn = session.current_turn_id == me.id
 
-        if action == "resign":
+        nudge = True
+        if game == Game.TEEN_PATTI:
+            if action != "tp":
+                return reply("Unknown action.", 400)
+            err = tpe.act(state, me.id, value, now_ms())
+            if err:
+                return reply(err, 400)
+            info = tpe.info(state)
+            nudge = info.get("nudge", False)
+        elif action == "resign":
             if game not in logic.TWO_PLAYER:
                 return reply("You cannot resign this game.", 400)
             if game == Game.CHESS:
@@ -433,7 +567,7 @@ def game_move(request, pk):
             return reply("Unknown action.", 400)
 
         _save(session, info)
-        if action in ("move", "roll") and not info["finished"] and info["next"] != me.id:
+        if nudge and action in ("move", "roll", "tp") and not info["finished"] and info["next"] != me.id:
             _nudge(session, info["next"], me)
         return reply()
 
@@ -441,10 +575,11 @@ def game_move(request, pk):
 @login_required
 def game_state(request, pk):
     session = game_access_or_404(request.user, pk)
-    if session.is_active and session.challenge.game == Game.CHESS and session.state.get("clock"):
+    game = session.challenge.game
+    if session.is_active and (game == Game.TEEN_PATTI or (game == Game.CHESS and session.state.get("clock"))):
         with transaction.atomic():
             locked = GameSession.objects.select_for_update().select_related("challenge").get(pk=pk)
-            if _settle_clock(locked):
+            if _settle_clock(locked) or _settle_table(locked):
                 session = locked
     return JsonResponse({"game": game_payload(session, request.user)})
 
@@ -475,6 +610,23 @@ def game_rematch(request, pk):
         old = GameSession.objects.select_for_update().select_related("challenge").get(pk=old.pk)
         if old.is_active:
             return redirect("game_play", pk=old.pk)
+        if old.challenge.game == Game.TEEN_PATTI:
+            # real (pretend) money is involved, so a new table is an invitation everyone answers, not an automatic rematch
+            challenge = old.challenge
+            others = [uid for uid in old.state.get("players", []) if uid != request.user.id]
+            if not others:
+                return redirect("games")
+            fresh = GameChallenge.objects.create(game=challenge.game, challenger=request.user, opponent_id=others[0],
+                                                 time_control=challenge.time_control)
+            GameParticipant.objects.create(challenge=fresh, user=request.user, seat=0, response=GameParticipant.Response.ACCEPTED)
+            for seat, uid in enumerate(others, start=1):
+                GameParticipant.objects.create(challenge=fresh, user_id=uid, seat=seat, response=GameParticipant.Response.PENDING)
+                target = User.objects.filter(pk=uid).first()
+                if target:
+                    notify(target, f"{request.user.display_name} invited you to a new Teen Patti table",
+                           "Open Games to take a seat.", reverse("games"), Notification.Kind.GAME, request.user)
+            messages.success(request, "New table opened. It starts when everyone has answered.")
+            return redirect("games")
         if old.rematch_session_id:
             session = old.rematch_session
         else:

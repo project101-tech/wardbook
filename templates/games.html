@@ -8,6 +8,11 @@
     <h1 class="page-title h3 mb-0">Games</h1>
     <div class="text-muted small">Play your neighbours. Everything updates live.</div>
   </div>
+  <div class="lb-wallet" title="Play money for Teen Patti. 1 token = ₹10 (pretend)">
+    <span class="coin">🪙</span><div><b>{{ wallet.tokens }}</b> tokens<small>₹{{ wallet.rupees }} play money</small></div>
+    {% if wallet.can_refill %}<form method="post" action="{% url 'wallet_refill' %}">{% csrf_token %}<button class="btn btn-wb btn-sm">Refill</button></form>
+    {% elif wallet.refill_wait %}<small class="text-muted">Refill in ~{{ wallet.refill_wait }}h</small>{% endif %}
+  </div>
   <div class="lb-stats">
     <div class="lb-stat win"><b>{{ stats.wins }}</b><span>Won</span></div>
     <div class="lb-stat loss"><b>{{ stats.losses }}</b><span>Lost</span></div>
@@ -20,7 +25,7 @@
   <div class="lb-section"><i class="bi bi-envelope-heart"></i> Invitations <span class="count">{{ received|length }}</span></div>
   {% for g in received %}
   <div class="lrow">
-    <div class="ico {% if g.key == 'chess' %}chess{% elif g.key == 'ludo' %}ludo{% elif g.key == 'snakes_ladders' %}snakes{% elif g.key == 'connect_four' %}c4{% else %}ttt{% endif %}"><i class="bi bi-controller"></i></div>
+    <div class="ico {% if g.key == 'chess' %}chess{% elif g.key == 'ludo' %}ludo{% elif g.key == 'snakes_ladders' %}snakes{% elif g.key == 'connect_four' %}c4{% elif g.key == 'teen_patti' %}tp{% else %}ttt{% endif %}"><i class="bi bi-controller"></i></div>
     <div class="grow"><div class="t">{{ g.label }} with {{ g.from }}</div>
       <div class="s">{% if g.with %}Also: {{ g.with|join:", " }}{% endif %}{% if g.time_control %}{% if g.with %} · {% endif %}{{ g.time_control }} each{% endif %}{% if not g.with and not g.time_control %}Waiting for you{% endif %}</div></div>
     <form method="post" action="{% url 'game_update' g.pk %}" class="d-flex gap-2">{% csrf_token %}
@@ -30,40 +35,20 @@
   </div>
   {% endfor %}
   {% endif %}
-
-  {% if active %}
-  <div class="lb-section"><i class="bi bi-play-circle-fill"></i> Your games</div>
-  {% for g in active %}
-  <a href="{% url 'game_play' g.pk %}" class="lrow text-decoration-none text-reset {% if g.your_turn %}turn{% endif %}">
-    <div class="ico {% if g.key == 'chess' %}chess{% elif g.key == 'ludo' %}ludo{% elif g.key == 'snakes_ladders' %}snakes{% elif g.key == 'connect_four' %}c4{% else %}ttt{% endif %}"><i class="bi bi-controller"></i></div>
-    <div class="grow"><div class="t">{{ g.label }}</div><div class="s">vs {{ g.others }} · {{ g.when }}</div></div>
-    {% if g.your_turn %}<span class="pill you">Your move</span>{% else %}<span class="text-muted small">Waiting</span>{% endif %}
-  </a>
-  {% endfor %}
-  {% endif %}
-
-  {% if waiting %}
-  <div class="lb-section"><i class="bi bi-hourglass-split"></i> Waiting for answers</div>
-  {% for g in waiting %}
-  <div class="lrow">
-    <div class="ico {% if g.key == 'chess' %}chess{% elif g.key == 'ludo' %}ludo{% elif g.key == 'snakes_ladders' %}snakes{% elif g.key == 'connect_four' %}c4{% else %}ttt{% endif %}"><i class="bi bi-controller"></i></div>
-    <div class="grow"><div class="t">{{ g.label }}{% if g.time_control %} · {{ g.time_control }}{% endif %}</div>
-      <div class="s">{% if g.joined %}Joined: {{ g.joined|join:", " }}{% endif %}{% if g.joined and g.waiting_on %} · {% endif %}{% if g.waiting_on %}Waiting for {{ g.waiting_on|join:", " }}{% endif %}</div></div>
-    <form method="post" class="d-flex gap-2">{% csrf_token %}
-      {% if g.can_start %}<button formaction="{% url 'game_start' g.pk %}" class="btn btn-wb btn-sm">Start now</button>{% endif %}
-      <button formaction="{% url 'game_cancel' g.pk %}" class="btn btn-outline-secondary btn-sm">Cancel</button>
-    </form>
-  </div>
-  {% endfor %}
-  {% endif %}
 </div>
 
 <div class="lb-section"><i class="bi bi-joystick"></i> Start a game</div>
 <div class="lb-cards">
   {% for c in cards %}
-  <button type="button" class="gcard {{ c.theme }}" data-game="{{ c.key }}" data-label="{{ c.label }}" data-party="{{ c.party|yesno:'1,0' }}">
+  <button type="button" class="gcard {{ c.theme }}" data-game="{{ c.key }}" data-label="{{ c.label }}" data-party="{{ c.party|yesno:'1,0' }}" data-max="{{ c.max }}">
     <div class="art">
-      {% if c.theme == 'chess' %}
+      {% if c.theme == 'tp' %}
+      <svg viewBox="0 0 120 120"><rect x="4" y="4" width="112" height="112" rx="16" fill="#0f6b44"/><circle cx="60" cy="60" r="46" fill="none" stroke="#fff" stroke-opacity=".18" stroke-width="3"/>
+        <g transform="rotate(-18 60 96)"><rect x="30" y="26" width="42" height="60" rx="6" fill="#fff"/><text x="38" y="46" font-size="17" font-weight="800" fill="#1c1e21" font-family="Georgia,serif">K</text><text x="42" y="74" font-size="26" fill="#1c1e21">♠</text></g>
+        <g transform="rotate(0 60 96)"><rect x="39" y="22" width="42" height="60" rx="6" fill="#fff"/><text x="47" y="42" font-size="17" font-weight="800" fill="#e63946" font-family="Georgia,serif">A</text><text x="50" y="70" font-size="26" fill="#e63946">♥</text></g>
+        <g transform="rotate(18 60 96)"><rect x="48" y="26" width="42" height="60" rx="6" fill="#fff"/><text x="56" y="46" font-size="17" font-weight="800" fill="#1c1e21" font-family="Georgia,serif">Q</text><text x="60" y="74" font-size="26" fill="#1c1e21">♣</text></g>
+        <circle cx="22" cy="98" r="9" fill="#f2b01e" stroke="#fff" stroke-width="2"/><circle cx="98" cy="96" r="9" fill="#e63946" stroke="#fff" stroke-width="2"/></svg>
+      {% elif c.theme == 'chess' %}
       <svg viewBox="0 0 120 120"><rect x="8" y="8" width="104" height="104" rx="10" fill="#e8edf5"/>
         <g fill="#7b97c2"><rect x="34" y="8" width="26" height="26"/><rect x="86" y="8" width="26" height="26"/><rect x="8" y="34" width="26" height="26"/><rect x="60" y="34" width="26" height="26"/><rect x="34" y="60" width="26" height="26"/><rect x="86" y="60" width="26" height="26"/><rect x="8" y="86" width="26" height="26"/><rect x="60" y="86" width="26" height="26"/></g>
         <text x="73" y="82" font-size="64" text-anchor="middle" fill="#1c1e21" stroke="#fff" stroke-width="2" paint-order="stroke" font-family="'Noto Sans Symbols 2','Segoe UI Symbol',sans-serif">♞</text></svg>
@@ -89,11 +74,35 @@
   {% endfor %}
 </div>
 
+<div id="games-mine" class="mt-3">
+  {% if active %}
+  <div class="lb-section"><i class="bi bi-play-circle-fill"></i> Your games</div>
+  {% for g in active|slice:":4" %}{% include "_game_active_row.html" %}{% endfor %}
+  {% if active|length > 4 %}<details class="mt-1"><summary class="small text-muted mb-2" role="button">Show {{ active|length|add:"-4" }} more</summary>
+    {% for g in active|slice:"4:" %}{% include "_game_active_row.html" %}{% endfor %}</details>{% endif %}
+  {% endif %}
+
+  {% if waiting %}
+  <div class="lb-section"><i class="bi bi-hourglass-split"></i> Waiting for answers</div>
+  {% for g in waiting %}
+  <div class="lrow">
+    <div class="ico {% if g.key == 'chess' %}chess{% elif g.key == 'ludo' %}ludo{% elif g.key == 'snakes_ladders' %}snakes{% elif g.key == 'connect_four' %}c4{% elif g.key == 'teen_patti' %}tp{% else %}ttt{% endif %}"><i class="bi bi-controller"></i></div>
+    <div class="grow"><div class="t">{{ g.label }}{% if g.time_control %} · {{ g.time_control }}{% endif %}</div>
+      <div class="s">{% if g.joined %}Joined: {{ g.joined|join:", " }}{% endif %}{% if g.joined and g.waiting_on %} · {% endif %}{% if g.waiting_on %}Waiting for {{ g.waiting_on|join:", " }}{% endif %}</div></div>
+    <form method="post" class="d-flex gap-2">{% csrf_token %}
+      {% if g.can_start %}<button formaction="{% url 'game_start' g.pk %}" class="btn btn-wb btn-sm">Start now</button>{% endif %}
+      <button formaction="{% url 'game_cancel' g.pk %}" class="btn btn-outline-secondary btn-sm">Cancel</button>
+    </form>
+  </div>
+  {% endfor %}
+  {% endif %}
+</div>
+
 <div class="row g-3 mt-1">
   <div class="col-md-7">
     <div class="lb-section"><i class="bi bi-clock-history"></i> Recent games</div>
     {% for g in recent %}
-    <div class="lrow"><div class="ico {% if g.key == 'chess' %}chess{% elif g.key == 'ludo' %}ludo{% elif g.key == 'snakes_ladders' %}snakes{% elif g.key == 'connect_four' %}c4{% else %}ttt{% endif %}"><i class="bi bi-controller"></i></div>
+    <div class="lrow"><div class="ico {% if g.key == 'chess' %}chess{% elif g.key == 'ludo' %}ludo{% elif g.key == 'snakes_ladders' %}snakes{% elif g.key == 'connect_four' %}c4{% elif g.key == 'teen_patti' %}tp{% else %}ttt{% endif %}"><i class="bi bi-controller"></i></div>
       <div class="grow"><div class="t">{{ g.label }}</div><div class="s">vs {{ g.others }} · {{ g.when }}</div></div>
       <span class="pill {{ g.result }}">{{ g.result }}</span></div>
     {% empty %}<p class="text-muted small">No finished games yet. Pick one above!</p>{% endfor %}
@@ -126,6 +135,11 @@
           </label>
           {% empty %}<div class="p-3 text-muted small">No other neighbours have joined yet.</div>{% endfor %}
         </div>
+        <div id="pick-boot" class="mt-3 d-none">
+          <label class="small fw-semibold mb-1">Boot (everyone puts this in at the start of each hand)</label>
+          <select name="boot" class="form-select">{% for b in boots %}<option value="{{ b.k }}">{{ b.label }} · {{ b.tokens }} token{{ b.tokens|pluralize }}</option>{% endfor %}</select>
+          <div class="small text-muted mt-1">You have {{ wallet.tokens }} tokens (₹{{ wallet.rupees }}). You sit down with all of them, up to 200, and take what is left back to your wallet when you leave.</div>
+        </div>
         <div id="pick-clock" class="mt-3 d-none">
           <label class="small fw-semibold mb-1">Time on the clock (each player)</label>
           <select name="time_control" class="form-select"><option value="">No clock — relaxed game</option>{% for k, v in clocks.items %}<option value="{{ k }}" {% if k == "10" %}selected{% endif %}>{{ v }}</option>{% endfor %}</select>
@@ -145,9 +159,10 @@
   function refresh() { var n = count(); go.disabled = n < 1; go.textContent = n < 1 ? 'Pick a neighbour' : (n === 1 ? 'Send invitation' : 'Invite ' + n + ' neighbours'); }
   document.querySelectorAll('.gcard').forEach(function (card) {
     card.addEventListener('click', function () {
-      var party = card.dataset.party === '1', game = card.dataset.game; max = party ? 3 : 1;
+      var party = card.dataset.party === '1', game = card.dataset.game; max = +card.dataset.max || 1;
       document.getElementById('pick-game').value = game; document.getElementById('pick-title').textContent = 'Play ' + card.dataset.label;
-      document.getElementById('pick-hint').textContent = party ? 'Pick 1 to 3 neighbours. The game starts once everyone has answered.' : 'Pick the neighbour you want to play.';
+      document.getElementById('pick-hint').textContent = party ? 'Pick 1 to ' + max + ' neighbours. The game starts once everyone has answered.' : 'Pick the neighbour you want to play.';
+      document.getElementById('pick-boot').classList.toggle('d-none', game !== 'teen_patti');
       document.getElementById('pick-clock').classList.toggle('d-none', game !== 'chess');
       boxes.forEach(function (b) { b.checked = false; }); document.getElementById('pick-search').value = ''; filter(''); refresh();
       modal = modal || new bootstrap.Modal(modalEl); modal.show();
@@ -167,8 +182,11 @@
 wbLive.onNotif(function (n) {
   if (n.kind !== 'game') return;
   fetch(location.href, { credentials: 'same-origin' }).then(function (r) { return r.text(); }).then(function (html) {
-    var doc = new DOMParser().parseFromString(html, 'text/html'), fresh = doc.getElementById('games-live');
-    if (fresh) document.getElementById('games-live').innerHTML = fresh.innerHTML;   // our own page, escaped by Django
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    ['games-live', 'games-mine'].forEach(function (id) {
+      var fresh = doc.getElementById(id), cur = document.getElementById(id);
+      if (fresh && cur) cur.innerHTML = fresh.innerHTML;   // our own page, escaped by Django
+    });
   }).catch(function () {});
 });
 </script>{% endblock %}

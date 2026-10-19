@@ -14,7 +14,7 @@
       {% endif %}
     </div>
 
-    <div class="post-body">{{ post.body|urlize|linebreaksbr }}</div>
+    <div class="post-body" data-mentionable>{{ post.body|urlize|linebreaksbr }}</div>
     {% if post.image %}<img class="post-img" src="{{ post.image.url }}" alt="" loading="lazy">{% endif %}
 
     <div class="d-flex align-items-center gap-1 mt-3 pt-2 border-top js-live-likes">
@@ -34,7 +34,7 @@
         <div class="comment flex-grow-1">
           <a href="{% url 'public_profile' c.author.pk %}?next={{ next_url|urlencode }}" class="fw-bold small text-reset text-decoration-none">{{ c.author.display_name }}</a>
           {% if c.author.house %}<span class="house-chip">{{ c.author.house }}</span>{% endif %}
-          <div class="small" style="overflow-wrap:anywhere">{{ c.body }}</div>
+          <div class="small" style="overflow-wrap:anywhere" data-mentionable>{{ c.body }}</div>
         </div>
       </div>
     {% endfor %}
@@ -42,7 +42,7 @@
 
     <form method="post" action="{% url 'comment' post.id %}" class="d-flex gap-2 mt-3 js-ajax">
       {% csrf_token %}<input type="hidden" name="next" value="{{ next_url }}">
-      <input class="form-control form-control-sm" name="body" maxlength="500" placeholder="Write a comment…" required autocomplete="off">
+      <input class="form-control form-control-sm" name="body" maxlength="500" data-mention="all" placeholder="Write a comment…" required autocomplete="off">
       <button class="btn btn-soft btn-sm px-3" aria-label="Send comment"><i class="bi bi-send-fill"></i></button>
     </form>
 </article>

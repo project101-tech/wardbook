@@ -73,4 +73,6 @@ render.yaml          Render blueprint (web service + Postgres)
 
 ## Next
 
-Games: Tic-tac-toe, Connect Four, Snakes & Ladders, Ludo (2-4 players) and Chess (with clocks and draw offers). Rules live in `core/gamelogic.py` and `core/chess_engine.py` (plain Python, no Django); views in `core/game_views.py`; the screens in `static/js/games*.js`. Moves are validated on the server, and the screens update live through the same long-poll channel as chat.
+Games: Tic-tac-toe, Connect Four, Snakes & Ladders, Ludo (2-4 players), Chess (clocks, draw offers) and Teen Patti (2-9 players, play-money wallet of 50 tokens; 1 token = ₹10 pretend). Rules live in `core/gamelogic.py`, `core/chess_engine.py` and `core/teenpatti_engine.py` (plain Python, no Django); views in `core/game_views.py`; the screens in `static/js/games*.js`. Moves are validated on the server, and the screens update live through the same long-poll channel as chat.
+
+Event pokes and @mentions live in `core/social.py` and `static/js/mentions.js`: type "@" in any post, comment or group chat box to tag a neighbour.

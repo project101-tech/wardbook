@@ -1,3 +1,4 @@
+{% load static %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -27,7 +28,7 @@
     .wb-top { background: #fff; border-bottom: 1px solid var(--wb-line); position: sticky; top: 0; z-index: 20; }
     .wb-brand { color: var(--wb-accent); text-decoration: none; font-weight: 800; font-size: 1.35rem; letter-spacing: -.03em;
                 display: flex; align-items: center; gap: .55rem; }
-    .wb-brand small { display: block; font-weight: 600; font-size: .68rem; color: var(--wb-muted); letter-spacing: 0; margin-top: -3px; white-space: nowrap; }
+    .wb-brand small { display: block; font-weight: 600; font-size: .68rem; color: var(--wb-muted); letter-spacing: 0; margin-top: -3px; }
     .wb-mark { width: 38px; height: 38px; flex: none; display: block; }
     .wb-toplink { color: var(--wb-muted); text-decoration: none; font-weight: 600; font-size: .92rem;
                   padding: .45rem .8rem; border-radius: 10px; position: relative; }
@@ -106,7 +107,7 @@
     <div class="container d-flex align-items-center justify-content-between py-2" style="max-width: 1000px;">
       <a href="{% url 'feed' %}" class="wb-brand">
         <svg class="wb-mark" aria-hidden="true"><use href="#wb-logo"/></svg>
-        <span>Wardbook</span>
+        <span>Wardbook<small>{{ SOCIETY_NAME }}</small></span>
       </a>
       <nav class="d-none d-md-flex align-items-center gap-1">
         <a class="wb-toplink {% if here == 'feed' %}active{% endif %}" href="{% url 'feed' %}">Town Square</a>
@@ -146,7 +147,7 @@
 
 {% if user.is_authenticated %}
   <nav class="wb-tabs d-md-none" aria-label="Main">
-    <a class="wb-tab {% if here == 'feed' %}active{% endif %}" href="{% url 'feed' %}"><i class="bi bi-house-heart{% if here == 'feed' %}-fill{% endif %}"></i>Town Square</a>
+    <a class="wb-tab {% if here == 'feed' %}active{% endif %}" href="{% url 'feed' %}"><i class="bi bi-house-heart{% if here == 'feed' %}-fill{% endif %}"></i>Home</a>
     <a class="wb-tab {% if here == 'announcements' %}active{% endif %}" href="{% url 'announcements' %}"><i class="bi bi-megaphone{% if here == 'announcements' %}-fill{% endif %}"></i>Notices</a>
     <a class="wb-tab {% if here == 'payments' %}active{% endif %}" href="{% url 'payments' %}"><i class="bi bi-wallet2"></i>Pay</a>
     <a class="wb-tab {% if here == 'inbox' or here == 'conversation' or here == 'group' %}active{% endif %}" href="{% url 'inbox' %}"><i class="bi bi-chat-dots{% if here == 'inbox' or here == 'conversation' or here == 'group' %}-fill{% endif %}"></i>Chat<span class="wb-badge js-dms {% if not unread_dms %}d-none{% endif %}">{{ unread_dms }}</span></a>
@@ -308,6 +309,7 @@ window.wbPush = (function () {
 })();
 </script>
 {% endif %}
+{% if user.is_authenticated %}<script src="{% static 'js/mentions.js' %}"></script>{% endif %}
 {% block scripts %}{% endblock %}
 {% if user.is_authenticated %}
 <script>

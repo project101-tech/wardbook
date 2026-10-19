@@ -10,7 +10,7 @@ from . import chess_engine as chess
 
 GAMES = ("tic_tac_toe", "connect_four", "snakes_ladders", "ludo", "chess")
 TWO_PLAYER = ("tic_tac_toe", "connect_four", "chess")
-PARTY = ("snakes_ladders", "ludo")          # 2-4 players
+PARTY = ("snakes_ladders", "ludo", "teen_patti")          # several players (Teen Patti: up to 9)
 
 
 def roll_die():

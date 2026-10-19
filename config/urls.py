@@ -4,7 +4,7 @@ from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import path
 
-from core import game_views, live, views
+from core import game_views, social, live, views
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -21,6 +21,10 @@ urlpatterns = [
     path("post/<int:pk>/delete/", views.delete_post, name="delete_post"),
     path("notices/", views.announcements, name="announcements"),
     path("notices/<int:pk>/respond/", views.respond, name="respond"),
+    path("notices/<int:pk>/poke/", social.poke, name="poke"),
+    path("notices/<int:pk>/poke/people/", social.poke_candidates, name="poke_people"),
+    path("mentions/search/", social.mention_search, name="mention_search"),
+    path("mentions/names/", social.mention_names, name="mention_names"),
     path("payments/", views.payments, name="payments"),
     path("payments/<int:pk>/paid/", views.pay, name="pay"),
     path("neighbours/", views.directory, name="directory"),
@@ -38,6 +42,7 @@ urlpatterns = [
     path("communities/<int:pk>/post/", views.community_post, name="community_post"),
     path("communities/<int:pk>/event/", views.community_event, name="community_event"),
     path("games/", game_views.games, name="games"),
+    path("games/wallet/refill/", game_views.wallet_refill, name="wallet_refill"),
     path("games/challenge/", game_views.game_challenge, name="game_challenge"),
     path("games/<int:pk>/start/", game_views.game_start, name="game_start"),
     path("games/<int:pk>/cancel/", game_views.game_cancel, name="game_cancel"),

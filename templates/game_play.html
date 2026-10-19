@@ -5,7 +5,7 @@
 <link rel="stylesheet" href="{% static 'css/games.css' %}">
 {% endblock %}
 {% block content %}
-<div class="gm{% if payload.game == 'chess' or payload.game == 'ludo' %} wide{% endif %}" id="gm">
+<div class="gm{% if payload.game == 'chess' or payload.game == 'ludo' or payload.game == 'teen_patti' %} wide{% endif %}{% if payload.game == 'teen_patti' %} tp-game{% endif %}" id="gm">
   <section style="min-width:0">
     <div class="gm-head">
       <a href="{% url 'games' %}" class="gm-icon text-decoration-none" aria-label="Back to games"><i class="bi bi-arrow-left"></i></a>
@@ -41,7 +41,7 @@
 <div id="gm-result" class="gm-result"><div class="box">
   <div class="big" id="gm-result-big"></div><h2 id="gm-result-title"></h2><div class="why" id="gm-result-why"></div>
   <div class="row">
-    <form method="post" action="{% url 'game_rematch' session.pk %}">{% csrf_token %}<button class="btn btn-wb"><i class="bi bi-arrow-repeat me-1"></i>Play again</button></form>
+    <form method="post" action="{% url 'game_rematch' session.pk %}">{% csrf_token %}<button class="btn btn-wb"><i class="bi bi-arrow-repeat me-1"></i>{% if payload.game == 'teen_patti' %}New table{% else %}Play again{% endif %}</button></form>
     <button id="gm-result-close" type="button" class="btn btn-outline-secondary">View board</button>
   </div>
 </div></div>
@@ -54,6 +54,7 @@
 {% if payload.game == 'snakes_ladders' %}<script src="{% static 'js/games-snakes.js' %}"></script>{% endif %}
 {% if payload.game == 'ludo' %}<script src="{% static 'js/games-ludo.js' %}"></script>{% endif %}
 {% if payload.game == 'chess' %}<script src="{% static 'js/games-chess.js' %}"></script>{% endif %}
+{% if payload.game == 'teen_patti' %}<script src="{% static 'js/games-teenpatti.js' %}"></script>{% endif %}
 <script>
 WBGame.boot({
   payload: JSON.parse(document.getElementById('game-data').textContent),

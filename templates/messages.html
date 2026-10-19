@@ -116,7 +116,7 @@
         {% endif %}
 
         <div id="chat" class="chat-box" data-api="{{ api }}" data-last="{{ last_id }}" data-group="{% if group %}1{% endif %}">
-          {% for m in chat %}<div class="bubble {% if m.sender_id == user.id %}mine{% else %}theirs{% endif %}" data-id="{{ m.id }}">{% if group and m.sender_id != user.id %}<div class="who">{{ m.sender.first_name|default:m.sender.username }}</div>{% endif %}{% if m.image %}<img class="pic" src="{{ m.image.url }}" alt="Photo" loading="lazy">{% endif %}{% if m.document %}<a href="{{ m.document.url }}" target="_blank" rel="noopener">Open document</a>{% endif %}{% if m.audio %}<audio controls preload="none" src="{{ m.audio.url }}"></audio>{% endif %}{% if m.body %}<div class="txt">{{ m.body }}</div>{% endif %}<div class="meta">{{ m.created_at|date:"j M, g:i A" }}</div></div>{% endfor %}
+          {% for m in chat %}<div class="bubble {% if m.sender_id == user.id %}mine{% else %}theirs{% endif %}" data-id="{{ m.id }}">{% if group and m.sender_id != user.id %}<div class="who">{{ m.sender.first_name|default:m.sender.username }}</div>{% endif %}{% if m.image %}<img class="pic" src="{{ m.image.url }}" alt="Photo" loading="lazy">{% endif %}{% if m.document %}<a href="{{ m.document.url }}" target="_blank" rel="noopener">Open document</a>{% endif %}{% if m.audio %}<audio controls preload="none" src="{{ m.audio.url }}"></audio>{% endif %}{% if m.body %}<div class="txt" data-mentionable>{{ m.body }}</div>{% endif %}<div class="meta">{{ m.created_at|date:"j M, g:i A" }}</div></div>{% endfor %}
         </div>
 
         {{ receipt|json_script:"receipt-data" }}
@@ -136,7 +136,7 @@
           <input id="pic" type="file" accept="image/*" class="d-none">
           <label class="icon-btn mb-0" for="doc" title="Send a document" role="button"><i class="bi bi-paperclip fs-5"></i></label>
           <input id="doc" type="file" class="d-none">
-          <input id="msg" class="form-control" maxlength="1000" placeholder="Type a message…">
+          <input id="msg" class="form-control"{% if group %} data-mention="group:{{ group.pk }}"{% endif %} maxlength="1000" placeholder="Type a message…">
           <button type="button" id="mic" class="icon-btn" title="Record a voice note"><i class="bi bi-mic-fill fs-5"></i></button>
           <button id="go" class="btn btn-wb px-3" aria-label="Send"><i class="bi bi-send-fill"></i></button>
         </form>
@@ -224,7 +224,7 @@
     if (m.image) { var i = el('img', 'pic'); i.src = m.image; i.alt = 'Photo'; d.appendChild(i); }
     if (m.document) { var a = el('a', '', 'Open document'); a.href = m.document; a.target = '_blank'; a.rel = 'noopener'; d.appendChild(a); }
     if (m.audio) { var a = el('audio'); a.controls = true; a.preload = 'none'; a.src = m.audio; d.appendChild(a); }
-    if (m.body) d.appendChild(el('div', 'txt', m.body));
+    if (m.body) { var tx = el('div', 'txt', m.body); tx.setAttribute('data-mentionable', ''); d.appendChild(tx); }
     d.appendChild(el('div', 'meta', m.time));
     chat.appendChild(d);
   }
