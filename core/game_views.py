@@ -5,15 +5,13 @@ who may do what, saving, notifications and the JSON the game screen needs.
 """
 import re
 import time
-from datetime import timedelta
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Count, F, Q
-from django.utils import timezone
+from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -22,7 +20,7 @@ from django.views.decorators.http import require_POST
 from . import chess_engine as chess
 from . import gamelogic as logic
 from . import teenpatti_engine as tpe
-from .models import GameChallenge, GameChatMessage, GameParticipant, GameSession, GameWallet, Notification
+from .models import GameChallenge, GameChatMessage, GameParticipant, GameSession, Notification
 from .views import fmt_time, notify, residents_except
 
 User = get_user_model()
@@ -46,9 +44,6 @@ GAME_CARDS = [
 CARD_BY_KEY = {c["key"]: c for c in GAME_CARDS}
 CHESS_CLOCKS = {"3": "3 min", "5": "5 min", "10": "10 min", "15": "15 min", "30": "30 min"}
 TP_BOOTS = {"10": "₹10 boot", "20": "₹20 boot", "50": "₹50 boot"}      # rupees of pretend money; 10 rupees = 1 token
-TP_MAX_BUYIN = 200
-TP_REFILL_BELOW = 10
-TP_REFILL_TO = 50
 CHESS_REASONS = {
     "checkmate": "Checkmate", "stalemate": "Stalemate", "insufficient": "Not enough pieces to checkmate",
     "repetition": "Same position three times", "fifty": "50 moves without a capture or pawn move",
@@ -69,21 +64,6 @@ def boot_of(challenge):
 
 class TableError(Exception):
     pass
-
-
-def wallet_of(user, lock=False):
-    qs = GameWallet.objects.select_for_update() if lock else GameWallet.objects
-    wallet, _ = qs.get_or_create(user=user)
-    return wallet
-
-
-def wallet_info(user):
-    w = wallet_of(user)
-    wait = None
-    if w.last_refill and timezone.now() < w.last_refill + timedelta(hours=24):
-        wait = int((w.last_refill + timedelta(hours=24) - timezone.now()).total_seconds() // 3600) + 1
-    return {"tokens": w.tokens, "rupees": w.tokens * 10, "can_refill": w.tokens < TP_REFILL_BELOW and wait is None,
-            "refill_wait": wait if w.tokens < TP_REFILL_BELOW else None}
 
 
 def minutes_of(challenge):
@@ -165,7 +145,7 @@ def games(request):
         "received": [received_row(c) for c in received], "waiting": [waiting_row(c) for c in waiting],
         "active": active_rows, "recent": [recent_row(c) for c in recent],
         "stats": {"wins": wins, "losses": total - wins - draws, "draws": draws, "played": total},
-        "leaderboard": leaderboard, "wallet": wallet_info(me),
+        "leaderboard": leaderboard,
         "boots": [{"k": k, "label": v, "tokens": int(k) // 10} for k, v in TP_BOOTS.items()],
     })
 
@@ -191,10 +171,7 @@ def game_challenge(request):
         messages.error(request, "One of those neighbours cannot be invited.")
         return redirect("games")
     if game == Game.TEEN_PATTI:
-        clock = TP_BOOTS.get(request.POST.get("boot", ""), TP_BOOTS["10"])
-        if wallet_of(request.user).tokens < boot_of(GameChallenge(time_control=clock)) * tpe.MIN_BUYIN_HANDS:
-            messages.error(request, "You do not have enough tokens for that table. Try a smaller boot, or refill from the Games page.")
-            return redirect("games")
+        clock = TP_BOOTS.get(request.POST.get("boot", ""), TP_BOOTS["10"])         # only the boot is chosen here; everybody picks their own buy-in at the table
     else:
         clock = request.POST.get("time_control", "") if game == Game.CHESS else ""
         clock = CHESS_CLOCKS.get(clock, "")
@@ -226,19 +203,11 @@ def session_for_challenge(challenge):
 
 
 def _open_table(challenge, players):
-    """Everyone sits down with their tokens (up to TP_MAX_BUYIN). Anyone who cannot afford the table is left out."""
-    boot = boot_of(challenge)
-    need = boot * tpe.MIN_BUYIN_HANDS
-    wallets = {uid: wallet_of(User.objects.get(pk=uid), lock=True) for uid in players}
-    seated = [uid for uid in players if wallets[uid].tokens >= need]
-    if len(seated) < 2:
-        raise TableError(f"Not enough players have {need} tokens (\u20b9{need * 10}) for a {TP_BOOTS.get(str(boot * 10), 'this')} table.")
-    buyins = {uid: min(wallets[uid].tokens, TP_MAX_BUYIN) for uid in seated}
-    for uid in seated:
-        GameWallet.objects.filter(pk=wallets[uid].pk).update(tokens=F("tokens") - buyins[uid])
+    """Open the table. There is no wallet: everybody picks how much to sit down with on the table screen itself."""
     import random
+    seated = list(players)
     random.SystemRandom().shuffle(seated)                       # random seats
-    state = tpe.new_table(seated, boot, buyins, now_ms())
+    state = tpe.new_table(seated, boot_of(challenge), now_ms())
     return state, tpe.info(state)["next"]
 
 
@@ -333,25 +302,6 @@ def game_start(request, pk):
 
 @login_required
 @require_POST
-def wallet_refill(request):
-    """A free top-up for someone who is (nearly) out of tokens: once a day, back up to 50 tokens."""
-    with transaction.atomic():
-        wallet = wallet_of(request.user, lock=True)
-        now = timezone.now()
-        if wallet.tokens >= TP_REFILL_BELOW:
-            messages.info(request, "You still have plenty of tokens.")
-        elif wallet.last_refill and now < wallet.last_refill + timedelta(hours=24):
-            messages.warning(request, "You can refill once a day. Try again later.")
-        else:
-            wallet.tokens = TP_REFILL_TO
-            wallet.last_refill = now
-            wallet.save(update_fields=["tokens", "last_refill"])
-            messages.success(request, f"Your wallet is topped up to {TP_REFILL_TO} tokens.")
-    return redirect("games")
-
-
-@login_required
-@require_POST
 def game_cancel(request, pk):
     challenge = get_object_or_404(GameChallenge, pk=pk, challenger=request.user, status=GameChallenge.Status.PENDING)
     challenge.status = GameChallenge.Status.DECLINED
@@ -412,7 +362,6 @@ def game_payload(session, user):
         pv = tpe.public_view(state, user.id, out["server_now"])
         out["tp"] = pv
         out["turn"] = pv["turn"] if pv["phase"] == "bet" else (pv["side"]["to"] if pv["phase"] == "sideshow" else None)
-        out["wallet"] = wallet_info(user)
     elif ch.game == Game.LUDO:
         dice = state.get("dice")
         out["movable"] = logic.ludo_movable(state, user.id, dice) if (dice and turn_is_me) else []
@@ -440,10 +389,6 @@ def _save(session, info):
     """Write the outcome of a move back to the database."""
     challenge, state = session.challenge, session.state
     session.current_turn_id = info["next"]
-    if challenge.game == Game.TEEN_PATTI:
-        for uid, amount in state.get("payouts", {}).items():       # tokens leaving the table go back to wallets
-            GameWallet.objects.filter(user_id=int(uid)).update(tokens=F("tokens") + amount)
-        state["payouts"] = {}
     state["seq"] = state.get("seq", 0) + 1          # lets the screen tell a new move from a re-sent one
     if info["finished"]:
         state["reason"] = info["reason"]
@@ -611,7 +556,7 @@ def game_rematch(request, pk):
         if old.is_active:
             return redirect("game_play", pk=old.pk)
         if old.challenge.game == Game.TEEN_PATTI:
-            # real (pretend) money is involved, so a new table is an invitation everyone answers, not an automatic rematch
+            # a new table is an invitation everyone answers (and everybody picks a fresh buy-in), not an automatic rematch
             challenge = old.challenge
             others = [uid for uid in old.state.get("players", []) if uid != request.user.id]
             if not others:

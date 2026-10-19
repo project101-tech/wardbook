@@ -3,7 +3,7 @@ from django.contrib.auth.admin import UserAdmin
 from django.db.models import Count, Q, Sum
 
 from .models import (Announcement, AnnouncementResponse, ChatGroup, Comment, Community, CommunityEvent,
-                     CommunityMember, GameChallenge, GameWallet, GroupMember, Notification, Payment, PaymentRequest, Post,
+                     CommunityMember, GameChallenge, GroupMember, Notification, Payment, PaymentRequest, Post,
                      ResidentProfile, User)
 
 admin.site.site_header = "Wardbook Control Room"
@@ -213,13 +213,6 @@ class CommunityAdmin(admin.ModelAdmin):
 class GameChallengeAdmin(admin.ModelAdmin):
     list_display = ("game", "challenger", "opponent", "status", "created_at")
     list_filter = ("game", "status")
-
-
-@admin.register(GameWallet)
-class GameWalletAdmin(admin.ModelAdmin):
-    list_display = ("user", "tokens", "last_refill", "updated_at")
-    search_fields = ("user__first_name", "user__last_name", "user__username")
-    list_editable = ("tokens",)
 
 
 @admin.register(CommunityEvent)

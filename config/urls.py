@@ -42,7 +42,6 @@ urlpatterns = [
     path("communities/<int:pk>/post/", views.community_post, name="community_post"),
     path("communities/<int:pk>/event/", views.community_event, name="community_event"),
     path("games/", game_views.games, name="games"),
-    path("games/wallet/refill/", game_views.wallet_refill, name="wallet_refill"),
     path("games/challenge/", game_views.game_challenge, name="game_challenge"),
     path("games/<int:pk>/start/", game_views.game_start, name="game_start"),
     path("games/<int:pk>/cancel/", game_views.game_cancel, name="game_cancel"),

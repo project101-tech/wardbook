@@ -1,40 +1,34 @@
-# This update: seen receipts, instant updates, phone push
+# This update: Teen Patti without a wallet
 
 Copy every file listed below into your repo (keep the same paths), then commit.
-After deploying, run migrations (`python manage.py migrate` locally; Render does it on deploy if your build runs it).
-No new Python packages.
-
-## New files (add)
-| File | What it is |
-|------|-----------|
-| `core/push.py` | Sends phone notifications in the background, checks your VAPID keys, removes dead phones |
-| `core/live.py` | The "live" channel that makes chat, feed, games and badges update instantly |
-| `core/migrations/0013_message_read_at.py` | Adds the "seen at" time to messages |
-| `templates/sw.js` | The service worker that shows notifications on the phone |
-| `templates/_post.html` | One post card (so new posts can be added live) |
-| `templates/_threads.html` | The conversation list (so it can refresh live) |
-| `static/icon-192.png`, `static/icon-512.png`, `static/badge-96.png` | Notification icons |
+**No new migration. No new Python packages.** Nothing to run except your normal deploy.
 
 ## Changed files (replace whole file)
-`config/settings.py`, `config/urls.py`, `core/apps.py`, `core/models.py`, `core/views.py`, `render.yaml`,
-`templates/base.html`, `templates/feed.html`, `templates/game_play.html`, `templates/games.html`,
-`templates/messages.html`, `templates/notifications.html`
+| File | What changed |
+|------|--------------|
+| `core/teenpatti_engine.py` | New buy-in phase, unlimited "add ₹500" top-ups, waiting state, per-player "invested" tracking |
+| `core/game_views.py` | Wallet, refill and the 24 h timer are gone. Opening a table no longer touches any wallet |
+| `config/urls.py` | Removed the `games/wallet/refill/` URL |
+| `core/admin.py` | Removed the (now pointless) Game wallets page |
+| `templates/games.html` | No token counter or Refill button in the lobby; new hint text under the boot choice |
+| `static/js/games-teenpatti.js` | Buy-in picker, "+ Add ₹500" button, waiting banner, tokens / put in / net results |
+| `static/css/games.css` | Styles for the above (appended at the end) |
+| `README.md` | One sentence about Teen Patti updated |
 
-## What you get
-1. **Seen receipts.** Under your last message in a DM you see *Sent* then *Seen · 10:10 PM*. In groups: *Seen by 3 of 5*.
-2. **Instant updates.** New messages, typing, notifications, badges, posts, comments, likes and game moves appear in well under a second, without refreshing. A small toast pops up for new notifications.
-3. **Phone push.** Notifications appear in the phone's notification bar even when Wardbook is closed. Tapping one opens the right chat/page. Several messages from one person collapse into "Bob (3 new messages)".
+## How it works now
+1. **Lobby:** no tokens anywhere. You only pick the **boot** (₹10 / ₹20 / ₹50) and your neighbours, like before.
+2. **When the table opens**, every player privately picks how much to bring: **₹500, ₹1,000, ₹1,500, ₹2,000, ₹3,000, ₹5,000**, or any other amount from ₹500 up in steps of ₹100.
+   Everyone can pick a different amount. The first hand is dealt when all have chosen (3 minutes; anyone who does not choose is taken off the table).
+3. **1 token = ₹10.** Your tokens show at the table (your own box and next to every player), never in the lobby.
+4. **Run low?** Tap **+ Add ₹500** (tap twice to confirm) for **+50 tokens**. No limit on how many times. It works mid-hand or between hands.
+   If nobody left can pay the boot, the table **waits 90 seconds** for someone to add tokens instead of throwing them out.
+5. **Leaving or closing:** a result pops up with your **tokens, what you put in, and net (₹)**, next to every other player so you can compare.
+   When the table closes, everyone gets the final comparison.
+6. **Nothing carries over.** There is no refill and no 24 h wait. Every new table (including "New table" after a game) starts from scratch.
 
-## Why push never worked before
-`core/views.py` called `webpush(..., urgency="high")`. That function has no `urgency` argument, so every push crashed
-with a TypeError that a broad `except` silently swallowed. It is now sent as the `Urgency: high` header.
+## Small fix included
+If a third player left in the middle of a side show, the hand could get stuck. The remaining player now wins the pot correctly.
 
-## Render settings (important)
-- **Start command** must be `gunicorn config.wsgi:application --worker-class gthread --workers 1 --threads 40 --timeout 60`
-  (`render.yaml` has it; if your service was created earlier, also change it in the Render dashboard → Settings).
-  Keep **workers at 1**: the live channel keeps its state in memory. Extra workers will not break anything, but chat/feed/games then refresh only every 30–60 s.
-- `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` must be **one matching pair**. The Notifications page now tells you if they are not.
-- Set `VAPID_CLAIMS_EMAIL` to a real address (e.g. `mailto:you@gmail.com`).
-
-## How to turn on push on a phone
-Open Wardbook in Chrome → tap **Turn on** in the bar (or Notifications → Turn on) → allow → **Send a test**.
+## Notes
+- The old `GameWallet` database table is simply unused now. It is left in place on purpose so there is no migration; it is harmless.
+- Tables that were already running when you deploy keep working.

@@ -1,6 +1,9 @@
 """Teen Patti (Flash): the rules, with no Django in it.
 
 A table is a series of hands. Money is counted in tokens (1 token = 10 rupees of pretend money).
+There is no wallet: every table starts fresh. Each player picks their own buy-in when the table opens, and can add
+more (ADDON_TOKENS at a time, as often as they like) whenever they run low. We keep track of what each player has put
+in ("invested"), so when they leave or the table closes we can show tokens, invested and net.
 Everything the server knows (every hand, the deck) lives in `state`; `public_view()` is the only thing that
 goes to a browser, and it only contains the viewer's own cards.
 """
@@ -12,6 +15,14 @@ SIDE_MS = 30_000        # time to answer a side show
 BETWEEN_MS = 9_000      # pause after a hand before the next one is dealt
 MAX_STAKE_MULT = 16     # the blind stake can be raised (doubled) up to boot x 16
 MIN_BUYIN_HANDS = 10    # you need at least 10 x boot to sit down
+TOKEN_RUPEES = 10       # 1 token = 10 rupees of pretend money
+ADDON_TOKENS = 50       # one top-up = 50 tokens = 500 rupees
+BUYIN_PRESETS = (50, 100, 150, 200, 300, 500)   # tokens: 500, 1000, 1500, 2000, 3000, 5000 rupees
+MIN_BUYIN_TOKENS = 50   # 500 rupees
+MAX_BUYIN_TOKENS = 10_000
+BUYIN_STEP = 10         # custom buy-ins go up in steps of 10 tokens (100 rupees)
+BUYIN_MS = 180_000      # time everyone has to choose their buy-in when the table opens
+REBUY_MS = 90_000       # when fewer than two people can pay the boot, how long the table waits for a top-up
 MAX_TIMEOUTS = 3        # this many missed turns in a row and you are taken off the table
 LOG_KEEP = 14
 _rng = random.SystemRandom()
@@ -77,14 +88,24 @@ def hand_name(cards):
 # ---------------------------------------------------------------------------------------------
 # Setting up
 # ---------------------------------------------------------------------------------------------
-def new_table(players, boot, buyins, now):
-    """players: ordered user ids. buyins: {user id: tokens they sit down with}. Returns the state (first hand dealt)."""
-    state = {"players": list(players), "boot": int(boot), "stacks": {str(u): int(buyins[u]) for u in players},
-             "initial": {str(u): int(buyins[u]) for u in players}, "cashed": {str(u): 0 for u in players},
-             "left": [], "hand_no": 0, "dealer": -1, "phase": "between", "hand": None, "last": None,
-             "log": [], "n": 0, "deadline": now, "timeouts": {}, "payouts": {}, "summary": None}
-    _next_hand(state, now)
+def new_table(players, boot, now):
+    """players: ordered user ids. Returns the state. The table opens in the 'buyin' phase: everybody chooses how many
+    tokens to sit down with, and the first hand is dealt once all of them have chosen."""
+    zero = {str(u): 0 for u in players}
+    state = {"players": list(players), "boot": int(boot), "stacks": dict(zero), "initial": dict(zero),
+             "invested": dict(zero), "cashed": dict(zero), "chosen": [],
+             "left": [], "hand_no": 0, "dealer": -1, "phase": "buyin", "hand": None, "last": None,
+             "log": [], "n": 0, "deadline": now + BUYIN_MS, "timeouts": {}, "summary": None}
     return state
+
+
+def _invested(state):
+    """What each player has put in so far (older tables only have 'initial')."""
+    return state.get("invested") or state["initial"]
+
+
+def min_buyin(boot):
+    return max(MIN_BUYIN_TOKENS, int(boot) * MIN_BUYIN_HANDS)
 
 
 def _log(state, uid, act, amount=0, other=None):
@@ -103,12 +124,26 @@ def _ready(state):
     return [u for u in state["players"] if u not in state["left"] and state["stacks"][str(u)] >= state["boot"]]
 
 
+def _active(state):
+    return [u for u in state["players"] if u not in state["left"]]
+
+
+def _wait(state, now):
+    """Fewer than two people can pay the boot: pause the table so somebody can add tokens."""
+    if state["phase"] != "waiting":
+        _log(state, None, "wait")
+    state["phase"] = "waiting"
+    state["deadline"] = now + REBUY_MS
+
+
 def _next_hand(state, now):
-    """Deal a new hand, or close the table if fewer than two people can play."""
-    _cull(state)
+    """Deal a new hand, wait for top-ups if too few can pay the boot, or close the table if too few people remain."""
+    if len(_active(state)) < 2:
+        _close(state, now)
+        return
     ready = _ready(state)
     if len(ready) < 2:
-        _close(state, now)
+        _wait(state, now)
         return
     players = state["players"]
     d = state["dealer"]
@@ -140,19 +175,10 @@ def _next_hand(state, now):
     _log(state, None, "deal")
 
 
-def _cull(state):
-    """Anyone who can no longer afford the boot is cashed out and leaves the table."""
-    for u in state["players"]:
-        if u not in state["left"] and state["stacks"][str(u)] < state["boot"]:
-            _cash_out(state, u)
-            state["left"].append(u)
-            _log(state, u, "broke")
-
-
 def _cash_out(state, uid):
+    """The player's tokens leave the table (they are shown in the result; nothing is stored anywhere)."""
     amount = state["stacks"][str(uid)]
     if amount:
-        state["payouts"][str(uid)] = state["payouts"].get(str(uid), 0) + amount
         state["cashed"][str(uid)] += amount
         state["stacks"][str(uid)] = 0
 
@@ -160,10 +186,70 @@ def _cash_out(state, uid):
 def _close(state, now):
     for u in state["players"]:
         _cash_out(state, u)
-    nets = {str(u): state["cashed"][str(u)] - state["initial"][str(u)] for u in state["players"]}
+    inv = _invested(state)
     state["phase"] = "over"
-    state["summary"] = [{"id": u, "net": nets[str(u)], "initial": state["initial"][str(u)]} for u in state["players"]]
+    state["summary"] = [{"id": u, "net": state["cashed"][str(u)] - inv[str(u)], "initial": inv[str(u)],
+                         "invested": inv[str(u)], "cashed": state["cashed"][str(u)]} for u in state["players"]]
     state["deadline"] = 0
+
+
+# ---------------------------------------------------------------------------------------------
+# Buy-in and top-ups
+# ---------------------------------------------------------------------------------------------
+def _buyin(state, uid, raw, now):
+    """A player picks how many tokens they sit down with. Returns an error string ('' on success)."""
+    if state["phase"] != "buyin":
+        return "The table has already started."
+    key = str(uid)
+    if uid in state.get("chosen", []):
+        return "You have already chosen your buy-in."
+    try:
+        tokens = int(raw)
+    except (TypeError, ValueError):
+        return "Choose how much to bring."
+    low = min_buyin(state["boot"])
+    if tokens < low:
+        return f"The smallest buy-in for this table is {low} tokens ({low * TOKEN_RUPEES} rupees)."
+    if tokens > MAX_BUYIN_TOKENS:
+        return f"The biggest buy-in is {MAX_BUYIN_TOKENS} tokens."
+    if tokens % BUYIN_STEP:
+        return f"Buy-ins go up in steps of {BUYIN_STEP * TOKEN_RUPEES} rupees."
+    state["stacks"][key] = tokens
+    state["initial"][key] = tokens
+    state["invested"][key] = tokens
+    state["chosen"].append(uid)
+    _log(state, uid, "buyin", tokens)
+    _buyin_progress(state, now)
+    return ""
+
+
+def _buyin_progress(state, now):
+    """Deal the first hand once everyone still at the table has chosen; close the table if too few remain."""
+    active = _active(state)
+    if len(active) < 2:
+        _close(state, now)
+    elif all(u in state["chosen"] for u in active):
+        _next_hand(state, now)
+
+
+def _buyin_timeout(state, now):
+    """Anyone who did not choose in time is taken off the table; the rest start (if there are at least two)."""
+    for u in state["players"]:
+        if u not in state["left"] and u not in state["chosen"]:
+            state["left"].append(u)
+            _log(state, u, "nobuyin")
+    _buyin_progress(state, now)
+
+
+def _addon(state, uid, now):
+    """Add ADDON_TOKENS (500 rupees) to a player's tokens. No limit on how often."""
+    key = str(uid)
+    inv = state.setdefault("invested", dict(state["initial"]))
+    state["stacks"][key] += ADDON_TOKENS
+    inv[key] = inv.get(key, 0) + ADDON_TOKENS
+    _log(state, uid, "addon", ADDON_TOKENS)
+    if state["phase"] == "waiting" and len(_ready(state)) >= 2:
+        _next_hand(state, now)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -222,8 +308,19 @@ def _pay(state, uid, amount):
 # ---------------------------------------------------------------------------------------------
 def options(state, uid):
     """List of {"a": action, "cost": tokens} the player could take now."""
+    out = _play_options(state, uid)
+    if state["phase"] in ("between", "bet", "sideshow", "waiting") and uid in state["players"] and uid not in state["left"]:
+        out.append({"a": "addon", "tokens": ADDON_TOKENS})          # always possible, as often as you like
+    return out
+
+
+def _play_options(state, uid):
     out = []
-    if state["phase"] == "over" or state["hand"] is None:
+    if state["phase"] == "buyin":
+        if uid in state["players"] and uid not in state["left"] and uid not in state.get("chosen", []):
+            out.append({"a": "buyin"})
+        return out
+    if state["phase"] in ("over", "waiting") or state["hand"] is None:
         return out
     h = state["hand"]
     key = str(uid)
@@ -267,14 +364,19 @@ def act(state, uid, action, now):
         return "This table is closed."
     if uid not in state["players"] or uid in state["left"]:
         return "You are not at this table."
-    allowed = {o["a"]: o for o in options(state, uid)}
     if action == "leave":
         _leave(state, uid, now)
         return ""
+    if action.startswith("buyin:"):
+        return _buyin(state, uid, action[6:], now)
+    allowed = {o["a"]: o for o in options(state, uid)}
     if action not in allowed:
         return "You cannot do that right now."
     h = state["hand"]
     state["timeouts"][str(uid)] = 0
+    if action == "addon":
+        _addon(state, uid, now)
+        return ""
     if action == "deal":
         if state["phase"] == "between":
             _next_hand(state, now)
@@ -353,6 +455,10 @@ def _answer_side(state, accept, now):
     h["side_result"] = {"a": asker, "b": target, "winner": winner, "loser": loser,
                         "cards": {str(asker): h["cards"][str(asker)], str(target): h["cards"][str(target)]}}
     _log(state, winner, "side_win", 0, loser)
+    people = _in(state)
+    if len(people) == 1:                                  # someone else left during the side show: the winner takes the pot
+        _finish_hand(state, people[0], "pack", {}, now)
+        return
     _advance(state, asker, now)
 
 
@@ -381,14 +487,15 @@ def _finish_hand(state, winner, kind, reveal, now):
 
 
 def _settle_leavers(state, now):
-    """Leavers (and the broke) have been cashed out; if too few remain, close the table."""
-    _cull(state)
-    if len(_ready(state)) < 2:
+    """Somebody has left between hands: close the table if too few remain, or pause it if too few can pay the boot."""
+    if len(_active(state)) < 2:
         _close(state, now)
+    elif len(_ready(state)) < 2:
+        _wait(state, now)
 
 
 def _leave(state, uid, now):
-    """Leave the table: your hand (if any) is packed and your tokens go back to your wallet."""
+    """Leave the table: your hand (if any) is packed and your tokens are cashed out (shown in your result)."""
     h = state["hand"]
     if state["phase"] in ("bet", "sideshow") and h and h["status"].get(str(uid)) == "in":
         if state["phase"] == "sideshow":
@@ -415,7 +522,9 @@ def _leave(state, uid, now):
         _cash_out(state, uid)
         state["left"].append(uid)
         _log(state, uid, "left")
-    if state["phase"] == "between":
+    if state["phase"] == "buyin":
+        _buyin_progress(state, now)
+    elif state["phase"] in ("between", "waiting"):
         _settle_leavers(state, now)
 
 
@@ -427,7 +536,11 @@ def settle(state, now):
             break
         changed = True
         h = state["hand"]
-        if state["phase"] == "between":
+        if state["phase"] == "buyin":
+            _buyin_timeout(state, now)
+        elif state["phase"] == "waiting":
+            _close(state, now)                            # nobody topped up in time
+        elif state["phase"] == "between":
             _next_hand(state, now)
         elif state["phase"] == "sideshow":
             _answer_side(state, False, now)
@@ -447,10 +560,9 @@ def settle(state, now):
 # What leaves the server
 # ---------------------------------------------------------------------------------------------
 def total_tokens(state):
-    """Sanity check: tokens on the table + in the pot + waiting to be paid out + already cashed out."""
+    """Sanity check: tokens on the table + in the pot + already cashed out. Always equals what everyone has put in."""
     pot = state["hand"]["pot"] if state["hand"] else 0
-    return sum(state["stacks"].values()) + pot + sum(state["payouts"].values()) + sum(
-        v - state["payouts"].get(k, 0) for k, v in state["cashed"].items())
+    return sum(state["stacks"].values()) + pot + sum(state["cashed"].values())
 
 
 def info(state):
@@ -474,23 +586,35 @@ def info(state):
 
 def public_view(state, uid, now):
     h = state["hand"]
+    inv = _invested(state)
+    chosen = state.get("chosen", [])
     players = []
     for u in state["players"]:
         k = str(u)
-        row = {"id": u, "stack": state["stacks"][k], "left": u in state["left"], "dealer": state["players"][state["dealer"]] == u,
-               "initial": state["initial"][k], "cashed": state["cashed"][k]}
+        row = {"id": u, "stack": state["stacks"][k], "left": u in state["left"],
+               "dealer": state["dealer"] >= 0 and state["players"][state["dealer"]] == u,
+               "initial": state["initial"][k], "invested": inv.get(k, 0), "cashed": state["cashed"][k],
+               "chosen": u in chosen}
         if h:
             row.update({"status": h["status"].get(k, "out"), "seen": bool(h["seen"].get(k)), "put": h["put"].get(k, 0)})
         players.append(row)
     me = None
     if h and str(uid) in h["cards"] and h["seen"].get(str(uid)):
         me = h["cards"][str(uid)]
-    out = {"boot": state["boot"], "phase": state["phase"], "hand_no": state["hand_no"], "players": players,
+    phase = state["phase"]
+    total_ms = {"buyin": BUYIN_MS, "waiting": REBUY_MS, "between": BETWEEN_MS, "sideshow": SIDE_MS}.get(phase, TURN_MS)
+    out = {"boot": state["boot"], "phase": phase, "hand_no": state["hand_no"], "players": players,
            "pot": h["pot"] if h else 0, "stake": h["stake"] if h else state["boot"], "turn": h["turn"] if h else None,
            "my_cards": me, "my_name": hand_name(me) if me else "", "options": options(state, uid),
-           "deadline_in": max(0, state["deadline"] - now) if state["deadline"] else 0, "log": state["log"][-8:],
+           "deadline_in": max(0, state["deadline"] - now) if state["deadline"] else 0, "total_ms": total_ms,
+           "log": state["log"][-8:],
            "last": state["last"], "summary": state["summary"], "side": h["side"] if h else None,
-           "max_stake": state["boot"] * MAX_STAKE_MULT, "n": state["n"]}
+           "max_stake": state["boot"] * MAX_STAKE_MULT, "n": state["n"],
+           "addon": ADDON_TOKENS, "token_rupees": TOKEN_RUPEES}
+    if phase == "buyin":
+        low = min_buyin(state["boot"])
+        out["buyin"] = {"choices": [c for c in BUYIN_PRESETS if c >= low], "min": low, "max": MAX_BUYIN_TOKENS,
+                        "step": BUYIN_STEP, "mine": uid in chosen}
     if h and h.get("side_result") and uid in (h["side_result"]["a"], h["side_result"]["b"]):
         out["side_result"] = h["side_result"]
     return out

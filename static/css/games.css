@@ -288,3 +288,25 @@
 .gm.tp-game .gm-player .gav { display: none; }
 .gm.tp-game .gm-player { padding: .45rem .65rem; }
 .gm.tp-game .gm-player .nm { font-size: .95rem; }
+
+/* Teen Patti: buy-in picker, add-on button and the tokens / put in / net table */
+.tp-reveal.buyin { border-color: #f2d27a; background: #fffaf0; }
+.tp-chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: .45rem; margin: .55rem 0; }
+.tp-chip { border: 2px solid #f2d27a; background: #fff; border-radius: 14px; padding: .55rem .3rem; font-weight: 800; font-size: 1rem; color: #3b2a00; line-height: 1.15; }
+.tp-chip small { display: block; font-weight: 600; font-size: .68rem; color: #8a6d1a; }
+.tp-chip:active { transform: translateY(1px); background: #fff3cf; }
+.tp-custom { display: flex; gap: .45rem; align-items: stretch; }
+.tp-custom input { flex: 1; min-width: 0; border: 1px solid #d9dee8; border-radius: 12px; padding: .5rem .7rem; font-size: .95rem; }
+.tp-custom .tp-btn { min-width: 0; padding: .5rem 1rem; }
+.tp-btn.addon { background: #fff3cf; color: #6b4a00; box-shadow: 0 3px 0 #e8c869; }
+.tp-btn.addon.hot { background: #f2b01e; color: #3b2a00; animation: tpPulse 1.4s ease-in-out infinite; }
+@keyframes tpPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+.tp-mine { font-weight: 800; font-size: .92rem; margin-bottom: .45rem; }
+.tp-stand { display: flex; flex-direction: column; font-size: .85rem; }
+.tp-stand .srow { display: grid; grid-template-columns: 1.3fr 1.1fr 1fr 1fr; gap: .35rem; align-items: baseline; padding: .32rem .2rem; border-bottom: 1px solid #eef0f4; font-variant-numeric: tabular-nums; }
+.tp-stand .srow.head { font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; color: var(--wb-muted); font-weight: 800; border-bottom-width: 2px; }
+.tp-stand .srow.me { font-weight: 800; background: #f0fbf5; border-radius: 8px; }
+.tp-stand .srow .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-stand .srow small { color: var(--wb-muted); font-weight: 600; }
+.tp-stand .net.up { color: #16864a; font-weight: 800; } .tp-stand .net.down { color: #c42b3d; font-weight: 800; }
+.tp-stand .note { font-size: .76rem; color: var(--wb-muted); padding-top: .4rem; }
