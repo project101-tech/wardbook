@@ -107,7 +107,7 @@
     <div class="container d-flex align-items-center justify-content-between py-2" style="max-width: 1000px;">
       <a href="{% url 'feed' %}" class="wb-brand">
         <svg class="wb-mark" aria-hidden="true"><use href="#wb-logo"/></svg>
-        <span>Wardbook<small>{{ SOCIETY_NAME }}</small></span>
+        <span>Wardbook</span>
       </a>
       <nav class="d-none d-md-flex align-items-center gap-1">
         <a class="wb-toplink {% if here == 'feed' %}active{% endif %}" href="{% url 'feed' %}">Town Square</a>
@@ -147,7 +147,7 @@
 
 {% if user.is_authenticated %}
   <nav class="wb-tabs d-md-none" aria-label="Main">
-    <a class="wb-tab {% if here == 'feed' %}active{% endif %}" href="{% url 'feed' %}"><i class="bi bi-house-heart{% if here == 'feed' %}-fill{% endif %}"></i>Home</a>
+    <a class="wb-tab {% if here == 'feed' %}active{% endif %}" href="{% url 'feed' %}"><i class="bi bi-house-heart{% if here == 'feed' %}-fill{% endif %}"></i>Town Square</a>
     <a class="wb-tab {% if here == 'announcements' %}active{% endif %}" href="{% url 'announcements' %}"><i class="bi bi-megaphone{% if here == 'announcements' %}-fill{% endif %}"></i>Notices</a>
     <a class="wb-tab {% if here == 'payments' %}active{% endif %}" href="{% url 'payments' %}"><i class="bi bi-wallet2"></i>Pay</a>
     <a class="wb-tab {% if here == 'inbox' or here == 'conversation' or here == 'group' %}active{% endif %}" href="{% url 'inbox' %}"><i class="bi bi-chat-dots{% if here == 'inbox' or here == 'conversation' or here == 'group' %}-fill{% endif %}"></i>Chat<span class="wb-badge js-dms {% if not unread_dms %}d-none{% endif %}">{{ unread_dms }}</span></a>
