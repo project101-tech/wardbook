@@ -154,18 +154,19 @@ class MusicViewTests(TestCase):
         self.assertContains(r, "Old Bollywood on Sundays")
         self.assertContains(r, "Lata, Rahman")
         self.assertContains(r, 'loading="lazy"')
-        self.assertContains(r, 'sandbox="allow-scripts')
         html = r.content.decode()
-        self.assertNotIn("autoplay", html.lower())
+        self.assertNotIn("sandbox=", html)                             # off by default: it can stop playback on phones
+        self.assertContains(r, 'allow="autoplay; clipboard-write; encrypted-media')   # permission only; nothing starts by itself
+        self.assertNotIn("autoplay=1", html)
         self.assertEqual(html.count("<iframe"), 1)
         self.assertNotContains(r, "Manage my music")                # no management UI on someone else's profile
         self.assertNotContains(r, "SECRET-GUILTY-PLEASURES")        # 9: hidden playlist never reaches another browser
 
-    def test_sandbox_can_be_switched_off(self):
+    def test_sandbox_can_be_switched_on(self):
         self.login(self.ravi)
-        with self.settings(SPOTIFY_EMBED_SANDBOX="-"):
+        with self.settings(SPOTIFY_EMBED_SANDBOX="allow-scripts allow-same-origin"):
             r = self.client.get(reverse("music_profile", args=[self.asmita.pk]))
-        self.assertNotContains(r, "sandbox=")
+        self.assertContains(r, 'sandbox="allow-scripts allow-same-origin"')
 
     # ---- 9/12: privacy + empty states ----
     def test_unshared_profile_shows_nothing(self):
@@ -418,3 +419,19 @@ class MusicBackLinkTests(TestCase):
         html = self.client.get(reverse("music"), {"q": "as", "partial": "1"}).content.decode()
         self.assertIn("next=/music/%3Fq%3Das", html)
         self.assertNotIn("partial", html)
+        # the FULL page runs inside base.html, which has its own `here` variable: the link must still be right
+        full = self.client.get(reverse("music"), {"q": "as"}).content.decode()
+        self.assertIn("next=/music/%3Fq%3Das", full)
+        self.assertNotIn("next=music", full)
+        page = self.client.get(reverse("music_profile", args=[a.pk]), {"next": "/music/?q=as"}).content.decode()
+        self.assertIn('href="/music/?q=as"', page)
+
+    def test_relative_or_foreign_back_values_are_ignored(self):
+        a, r = make("9000000021", "Asha", "N", "3"), make("9000000022", "Ravi", "S", "4")
+        MusicProfile.objects.create(user=a, is_shared=True)
+        MusicPlaylist.objects.create(user=a, spotify_id=ID1, title="T")
+        self.client.force_login(r)
+        for bad in ("music", "music/", "//evil.example/x", "https://evil.example/x", "javascript:alert(1)"):
+            page = self.client.get(reverse("music_profile", args=[a.pk]), {"next": bad}).content.decode()
+            self.assertIn('href="/music/"', page, bad)
+            self.assertNotIn("evil.example", page)

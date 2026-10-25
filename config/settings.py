@@ -129,9 +129,10 @@ PUSH_ASYNC = os.environ.get("PUSH_ASYNC", "1") == "1"  # send pushes in a backgr
 # ---- Music Taste (Spotify links + official embeds; no Spotify account or secret is needed) ----
 MUSIC_MAX_PLAYLISTS = int(os.environ.get("MUSIC_MAX_PLAYLISTS", "20"))      # per resident
 SPOTIFY_OEMBED_TIMEOUT = float(os.environ.get("SPOTIFY_OEMBED_TIMEOUT", "4"))  # seconds; title/artwork are best effort
-# iframe sandbox for Spotify's player. Set SPOTIFY_EMBED_SANDBOX="-" to switch the sandbox off if a browser ever blocks playback.
-SPOTIFY_EMBED_SANDBOX = os.environ.get(
-    "SPOTIFY_EMBED_SANDBOX", "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation allow-forms")
+# Optional iframe sandbox for Spotify's player. OFF by default: Spotify's own embed code has none, and a sandbox can stop
+# playback on some phones. The player is still a separate-origin iframe, so it cannot touch Wardbook's page or cookies.
+# To turn it on, set SPOTIFY_EMBED_SANDBOX="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation allow-forms"
+SPOTIFY_EMBED_SANDBOX = os.environ.get("SPOTIFY_EMBED_SANDBOX", "")
 
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

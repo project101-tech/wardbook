@@ -11,7 +11,7 @@
   {% else %}
     <div class="mp-embed">
       <iframe src="{{ pl.embed_url }}" height="352" loading="lazy" title="Spotify player: {{ pl.display_title }}"
-              allow="clipboard-write; encrypted-media; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"
+              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"
               {% if sandbox %}sandbox="{{ sandbox }}"{% endif %}></iframe>
     </div>
   {% endif %}

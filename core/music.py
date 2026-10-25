@@ -70,8 +70,8 @@ def music_home(request):
     for u in page.object_list:
         u.covers = covers.get(u.pk, [])
     mine = MusicProfile.objects.filter(user=request.user).first()
-    here = reverse("music") + ("?" + urlencode({k: v for k, v in (("q", q), ("page", page.number if page.number > 1 else "")) if v}) if q or page.number > 1 else "")
-    ctx = {"page": page, "q": q, "here": here, "total_sharing": page.paginator.count,
+    back_to = reverse("music") + ("?" + urlencode({k: v for k, v in (("q", q), ("page", page.number if page.number > 1 else "")) if v}) if q or page.number > 1 else "")
+    ctx = {"page": page, "q": q, "back_to": back_to, "total_sharing": page.paginator.count,
            "my_count": MusicPlaylist.objects.filter(user=request.user).count(), "my_shared": bool(mine and mine.is_shared)}
     if request.GET.get("partial"):
         return render(request, "_music_results.html", ctx)
@@ -88,8 +88,8 @@ def music_profile(request, user_id):
     playlists = list(playlists)
     is_me = resident.pk == request.user.pk
     back_url = request.GET.get("next", "")
-    if not url_has_allowed_host_and_scheme(back_url, allowed_hosts={request.get_host()}):
-        back_url = ""
+    if not back_url.startswith("/") or back_url.startswith("//") or not url_has_allowed_host_and_scheme(back_url, allowed_hosts={request.get_host()}):
+        back_url = ""                      # only a plain path on this site, never a relative or outside address
     return render(request, "music_profile.html", {
         "resident": resident, "mp": mp if playlists or is_me else None, "playlists": playlists, "is_me": is_me,
         "my_hidden": is_me and not (mp and mp.is_shared), "back_url": back_url, "sandbox": _sandbox(),

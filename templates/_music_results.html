@@ -1,7 +1,7 @@
 {% if page.object_list %}
   <div class="mp-grid">
     {% for r in page.object_list %}
-      <a class="card-wb mp-person" href="{% url 'music_profile' r.pk %}?next={{ here|urlencode }}" aria-label="{{ r.display_name }}'s music, {{ r.shared_count }} playlist{{ r.shared_count|pluralize }}">
+      <a class="card-wb mp-person" href="{% url 'music_profile' r.pk %}?next={{ back_to|urlencode }}" aria-label="{{ r.display_name }}'s music, {{ r.shared_count }} playlist{{ r.shared_count|pluralize }}">
         <div class="mp-covers">
           {% for c in r.covers %}<img src="{{ c }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% empty %}<span><i class="bi bi-music-note-beamed"></i></span>{% endfor %}
         </div>
