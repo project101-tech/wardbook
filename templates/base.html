@@ -119,7 +119,7 @@
         <a class="wb-toplink {% if here == 'directory' %}active{% endif %}" href="{% url 'directory' %}">Neighbours</a>
         <a class="wb-toplink {% if here == 'communities' %}active{% endif %}" href="{% url 'communities' %}">Communities</a>
         <a class="wb-toplink {% if here == 'games' %}active{% endif %}" href="{% url 'games' %}">Games</a>
-        <a class="wb-toplink {% if here == 'music' or here == 'music_profile' or here == 'music_manage' %}active{% endif %}" href="{% url 'music' %}"><i class="bi bi-music-note-beamed"></i> <span class="wb-lbl">Music Taste</span></a>
+        <a class="wb-toplink {% if here == 'music' or here == 'music_profile' or here == 'music_manage' %}active{% endif %}" href="{% url 'music' %}"> <span class="wb-lbl">Music Taste</span></a>
         <a class="wb-toplink {% if here == 'inbox' or here == 'conversation' or here == 'group' %}active{% endif %}" href="{% url 'inbox' %}">Messages <span class="wb-badge js-dms {% if not unread_dms %}d-none{% endif %}" style="position:static;margin-left:2px">{{ unread_dms }}</span></a>
         <a class="wb-toplink {% if here == 'notifications' %}active{% endif %}" href="{% url 'notifications' %}" title="Notifications"><i class="bi bi-bell-fill"></i> <span class="wb-badge js-notifs {% if not unread_notifications %}d-none{% endif %}" style="position:static;margin-left:2px">{{ unread_notifications }}</span></a>
         <a class="wb-toplink {% if here == 'profile' %}active{% endif %}" href="{% url 'profile' %}">{{ user.first_name|default:user.username }}</a>
@@ -156,7 +156,8 @@
     <a class="wb-tab {% if here == 'payments' %}active{% endif %}" href="{% url 'payments' %}"><i class="bi bi-wallet2"></i>Pay</a>
     <a class="wb-tab {% if here == 'inbox' or here == 'conversation' or here == 'group' %}active{% endif %}" href="{% url 'inbox' %}"><i class="bi bi-chat-dots{% if here == 'inbox' or here == 'conversation' or here == 'group' %}-fill{% endif %}"></i>Chat<span class="wb-badge js-dms {% if not unread_dms %}d-none{% endif %}">{{ unread_dms }}</span></a>
     <a class="wb-tab {% if here == 'games' or here == 'game_play' %}active{% endif %}" href="{% url 'games' %}"><i class="bi bi-controller"></i>Games</a>
-    <a class="wb-tab {% if here == 'music' or here == 'music_profile' or here == 'music_manage' %}active{% endif %}" href="{% url 'music' %}"><i class="bi bi-music-note-beamed"></i>Music</a>
+    <a class="wb-tab {% if here == 'music' or here == 'music_profile' or here == 'music_manage' %}active{% endif %}" href="{% url 'music' %}"><i class="bi bi-music-note-beamed"></i>Music Taste
+    </a>
     <a class="wb-tab {% if here == 'communities' or here == 'community_detail' %}active{% endif %}" href="{% url 'communities' %}"><i class="bi bi-people{% if here == 'communities' or here == 'community_detail' %}-fill{% endif %}"></i>Groups</a>
     <a class="wb-tab {% if here == 'directory' %}active{% endif %}" href="{% url 'directory' %}"><i class="bi bi-person-lines-fill"></i>Neighbours</a>
     <a class="wb-tab {% if here == 'notifications' %}active{% endif %}" href="{% url 'notifications' %}"><i class="bi bi-bell{% if here == 'notifications' %}-fill{% endif %}"></i>Alerts<span class="wb-badge js-notifs {% if not unread_notifications %}d-none{% endif %}">{{ unread_notifications }}</span></a>
