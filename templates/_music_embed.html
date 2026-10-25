@@ -1,0 +1,22 @@
+<article class="card-wb mp-card" id="pl-{{ pl.pk }}">
+  <div class="mp-head">
+    {% if pl.cover_url %}<img class="mp-cover" src="{{ pl.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}<span class="mp-cover ph"><i class="bi bi-music-note-list"></i></span>{% endif %}
+    <div class="min-w-0">
+      <div class="mp-title">{{ pl.display_title }}</div>
+      {% if pl.description %}<div class="mp-note">{{ pl.description }}</div>{% endif %}
+    </div>
+  </div>
+  {% if pl.is_unavailable %}
+    <div class="mp-gone"><i class="bi bi-exclamation-triangle me-1"></i>Spotify couldn't find this playlist. It may have been made private or deleted, so the player is hidden.</div>
+  {% else %}
+    <div class="mp-embed">
+      <iframe src="{{ pl.embed_url }}" height="352" loading="lazy" title="Spotify player: {{ pl.display_title }}"
+              allow="clipboard-write; encrypted-media; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"
+              {% if sandbox %}sandbox="{{ sandbox }}"{% endif %}></iframe>
+    </div>
+  {% endif %}
+  <div class="mp-foot">
+    <span class="small text-muted">{% if not pl.is_unavailable %}Player not loading? {% endif %}Listen on Spotify</span>
+    <a class="btn-spotify" href="{{ pl.url }}" target="_blank" rel="noopener noreferrer"><i class="bi bi-spotify"></i>Open in Spotify</a>
+  </div>
+</article>

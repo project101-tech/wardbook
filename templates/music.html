@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Music Taste{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/music.css' %}">{% endblock %}
+{% block mainclass %}wide{% endblock %}
+
+{% block content %}
+<div class="mp-hero mb-3">
+  <div>
+    <h1 class="page-title h3 mb-1"><i class="bi bi-music-note-beamed me-1" style="color:var(--wb-accent)"></i>Music Taste</h1>
+    <p class="text-muted mb-0">See what your neighbours listen to, and play their shared Spotify playlists right here.</p>
+  </div>
+  <a class="btn btn-soft" href="{% url 'music_manage' %}"><i class="bi bi-sliders me-1"></i>My music</a>
+</div>
+
+{% if not my_shared %}
+  <div class="card-wb p-3 mb-3 d-flex align-items-center gap-3 flex-wrap">
+    <i class="bi bi-lock-fill fs-4" style="color:var(--wb-accent)"></i>
+    <div class="flex-grow-1" style="min-width:200px">
+      <div class="fw-bold">Your music is private</div>
+      <div class="small text-muted">{% if my_count %}You've added {{ my_count }} playlist{{ my_count|pluralize }}, but neighbours can't see {{ my_count|pluralize:"it,them" }} until you switch sharing on.{% else %}Add a Spotify playlist and choose to share it. Nothing is shown to neighbours until you do.{% endif %}</div>
+    </div>
+    <a class="btn btn-wb btn-sm" href="{% url 'music_manage' %}">{% if my_count %}Review &amp; share{% else %}Get started{% endif %}</a>
+  </div>
+{% endif %}
+
+<form method="get" action="{% url 'music' %}" class="mb-1" role="search">
+  <div class="input-group">
+    <span class="input-group-text bg-white" style="border-radius:12px 0 0 12px"><i class="bi bi-search"></i></span>
+    <input id="music-search" class="form-control" style="border-radius:0 12px 12px 0" name="q" value="{{ q }}" placeholder="Search neighbours by name or house number" autocomplete="off" aria-label="Search neighbours">
+  </div>
+</form>
+<div id="music-status" class="mp-status mb-1" role="status" aria-live="polite"></div>
+
+<div id="music-results">{% include "_music_results.html" %}</div>
+{% endblock %}
+
+{% block scripts %}<script src="{% static 'js/music.js' %}"></script>{% endblock %}

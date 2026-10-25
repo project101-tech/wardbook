@@ -565,6 +565,12 @@ def profile(request):
     })
 
 
+def _music_count(resident):
+    """How many playlists this resident has chosen to share with neighbours (0 when they have not opted in)."""
+    from .music import _shared_playlists
+    return _shared_playlists(resident)[1].count()
+
+
 @login_required
 def public_profile(request, user_id):
     resident = resident_or_404(user_id)
@@ -578,6 +584,7 @@ def public_profile(request, user_id):
         "back_url": back_url,
         "post_count": Post.objects.filter(author=resident, is_hidden=False).count(),
         "recent_posts": Post.objects.filter(author=resident, is_hidden=False).order_by("-created_at")[:5],
+        "music_count": _music_count(resident),
     })
 
 

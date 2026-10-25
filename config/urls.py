@@ -4,7 +4,7 @@ from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import path
 
-from core import game_views, social, live, views
+from core import game_views, live, music, social, views
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -25,6 +25,17 @@ urlpatterns = [
     path("notices/<int:pk>/poke/people/", social.poke_candidates, name="poke_people"),
     path("mentions/search/", social.mention_search, name="mention_search"),
     path("mentions/names/", social.mention_names, name="mention_names"),
+    path("music/", music.music_home, name="music"),
+    path("music/me/", music.music_manage, name="music_manage"),
+    path("music/me/settings/", music.music_settings, name="music_settings"),
+    path("music/me/add/", music.music_add, name="music_add"),
+    path("music/me/preview/", music.music_preview, name="music_preview"),
+    path("music/me/<int:pk>/edit/", music.music_edit, name="music_edit"),
+    path("music/me/<int:pk>/toggle/", music.music_toggle, name="music_toggle"),
+    path("music/me/<int:pk>/move/", music.music_move, name="music_move"),
+    path("music/me/<int:pk>/refresh/", music.music_refresh, name="music_refresh"),
+    path("music/me/<int:pk>/delete/", music.music_delete, name="music_delete"),
+    path("music/<int:user_id>/", music.music_profile, name="music_profile"),
     path("payments/", views.payments, name="payments"),
     path("payments/<int:pk>/paid/", views.pay, name="pay"),
     path("neighbours/", views.directory, name="directory"),

@@ -14,6 +14,7 @@
   </div>
   <div class="d-flex justify-content-center gap-2 mt-4">
     {% if resident.pk != user.pk %}<a href="{% url 'conversation' resident.pk %}" class="btn btn-wb btn-sm"><i class="bi bi-chat-dots me-1"></i>Message</a>{% else %}<a href="{% url 'profile' %}" class="btn btn-soft btn-sm"><i class="bi bi-pencil me-1"></i>Edit profile</a>{% endif %}
+    {% if music_count %}<a href="{% url 'music_profile' resident.pk %}" class="btn btn-soft btn-sm"><i class="bi bi-music-note-beamed me-1"></i>Music Taste</a>{% endif %}
   </div>
 </div>
 {% if profile.occupation or profile.hometown or profile.interests %}<div class="card-wb p-3 mb-3"><h2 class="h6 fw-bold mb-3">About {{ resident.first_name|default:resident.username }}</h2>{% if profile.occupation %}<div class="small mb-2"><i class="bi bi-briefcase me-2 text-muted"></i>{{ profile.occupation }}</div>{% endif %}{% if profile.hometown %}<div class="small mb-2"><i class="bi bi-geo-alt me-2 text-muted"></i>From {{ profile.hometown }}</div>{% endif %}{% if profile.interests %}<div class="small"><i class="bi bi-stars me-2 text-muted"></i>{{ profile.interests }}</div>{% endif %}</div>{% endif %}

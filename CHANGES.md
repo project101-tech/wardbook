@@ -1,34 +1,40 @@
-# This update: Teen Patti without a wallet
+# This update: Music Taste (Spotify playlists + embedded player)
 
-Copy every file listed below into your repo (keep the same paths), then commit.
-**No new migration. No new Python packages.** Nothing to run except your normal deploy.
+Built on top of the current `main` (commit 2e9147b, "Removed society naming").
+Copy the files below into your repo (same paths), then run **`python manage.py migrate`** (adds migration `0016_music_taste`: two new tables, nothing existing is touched).
+**No new Python packages. No new environment variables are required. No Spotify developer account is needed.**
 
-## Changed files (replace whole file)
-| File | What changed |
-|------|--------------|
-| `core/teenpatti_engine.py` | New buy-in phase, unlimited "add ₹500" top-ups, waiting state, per-player "invested" tracking |
-| `core/game_views.py` | Wallet, refill and the 24 h timer are gone. Opening a table no longer touches any wallet |
-| `config/urls.py` | Removed the `games/wallet/refill/` URL |
-| `core/admin.py` | Removed the (now pointless) Game wallets page |
-| `templates/games.html` | No token counter or Refill button in the lobby; new hint text under the boot choice |
-| `static/js/games-teenpatti.js` | Buy-in picker, "+ Add ₹500" button, waiting banner, tokens / put in / net results |
-| `static/css/games.css` | Styles for the above (appended at the end) |
-| `README.md` | One sentence about Teen Patti updated |
+## New files
+| File | What it is |
+|------|-----------|
+| `core/music.py` | Views: discover/search, a resident's music profile, manage page, add / edit / hide / reorder / remove / refresh, link preview |
+| `core/spotify.py` | Link validation (only `open.spotify.com/playlist/<id>`), builds link + embed URL from the validated id, asks Spotify's public oEmbed for title + artwork (best effort, never blocks saving) |
+| `core/migrations/0016_music_taste.py` | `MusicProfile`, `MusicPlaylist` |
+| `core/test_music.py` | 39 automated tests (`python manage.py test core.test_music`) |
+| `templates/music.html`, `_music_results.html`, `music_profile.html`, `music_manage.html`, `_music_embed.html` | The pages |
+| `static/css/music.css`, `static/js/music.js` | Styling, live search, link preview |
 
-## How it works now
-1. **Lobby:** no tokens anywhere. You only pick the **boot** (₹10 / ₹20 / ₹50) and your neighbours, like before.
-2. **When the table opens**, every player privately picks how much to bring: **₹500, ₹1,000, ₹1,500, ₹2,000, ₹3,000, ₹5,000**, or any other amount from ₹500 up in steps of ₹100.
-   Everyone can pick a different amount. The first hand is dealt when all have chosen (3 minutes; anyone who does not choose is taken off the table).
-3. **1 token = ₹10.** Your tokens show at the table (your own box and next to every player), never in the lobby.
-4. **Run low?** Tap **+ Add ₹500** (tap twice to confirm) for **+50 tokens**. No limit on how many times. It works mid-hand or between hands.
-   If nobody left can pay the boot, the table **waits 90 seconds** for someone to add tokens instead of throwing them out.
-5. **Leaving or closing:** a result pops up with your **tokens, what you put in, and net (₹)**, next to every other player so you can compare.
-   When the table closes, everyone gets the final comparison.
-6. **Nothing carries over.** There is no refill and no 24 h wait. Every new table (including "New table" after a game) starts from scratch.
+## Changed files
+| File | Change |
+|------|--------|
+| `core/models.py` | Added `MusicProfile`, `MusicPlaylist` (appended at the end) |
+| `config/urls.py` | `music/...` routes |
+| `config/settings.py` | Three optional settings: `MUSIC_MAX_PLAYLISTS` (20), `SPOTIFY_OEMBED_TIMEOUT` (4 s), `SPOTIFY_EMBED_SANDBOX` |
+| `core/admin.py` | Admin pages for both models (moderation) |
+| `core/views.py` | `public_profile` passes `music_count` (3 lines) |
+| `templates/base.html` | "Music Taste" in the top bar and a "Music" tab on phones. Top-bar links are now `nowrap` with slightly tighter spacing, because the bar was already wrapping/overflowing at tablet widths and one more link made it worse |
+| `templates/public_profile.html` | "Music Taste" button when that neighbour shares music |
+| `README.md` | Short Music Taste section |
 
-## Small fix included
-If a third player left in the middle of a side show, the hand could get stuck. The remaining player now wins the pot correctly.
+## How privacy works
+* Nothing is visible until the resident switches **Share my music with neighbours** on (off by default). Adding a playlist never publishes by itself.
+* Each playlist also has Visible / Hidden. Hidden ones are never sent to anyone else's browser.
+* Switching sharing off hides everything again immediately.
+* Every edit is a POST that looks the playlist up by `user=request.user`; someone else's playlist is simply a 404.
 
-## Notes
-- The old `GameWallet` database table is simply unused now. It is left in place on purpose so there is no migration; it is harmless.
-- Tables that were already running when you deploy keep working.
+## Optional settings
+`SPOTIFY_EMBED_SANDBOX` is the iframe `sandbox` attribute for Spotify's player. If a browser ever blocks playback, set it to `-` in Render to switch the sandbox off (no redeploy of code needed).
+
+## Spotify limits (why there is no "Connect Spotify" button)
+Spotify's February 2026 rules cap development-mode apps at 5 users and require the developer to have Premium; extended access needs a registered business with a very large user base. Spotify also removed the endpoint that listed another person's playlists. So linking accounts cannot work for a society. Pasting a link + Spotify's official embed works for everyone, with no keys.
+Private playlists cannot be played by neighbours: the owner must make the playlist public in Spotify.

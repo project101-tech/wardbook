@@ -126,6 +126,13 @@ VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
 VAPID_CLAIMS_EMAIL = os.environ.get("VAPID_CLAIMS_EMAIL", "mailto:admin@example.com")
 PUSH_ASYNC = os.environ.get("PUSH_ASYNC", "1") == "1"  # send pushes in a background thread (tests set 0)
 
+# ---- Music Taste (Spotify links + official embeds; no Spotify account or secret is needed) ----
+MUSIC_MAX_PLAYLISTS = int(os.environ.get("MUSIC_MAX_PLAYLISTS", "20"))      # per resident
+SPOTIFY_OEMBED_TIMEOUT = float(os.environ.get("SPOTIFY_OEMBED_TIMEOUT", "4"))  # seconds; title/artwork are best effort
+# iframe sandbox for Spotify's player. Set SPOTIFY_EMBED_SANDBOX="-" to switch the sandbox off if a browser ever blocks playback.
+SPOTIFY_EMBED_SANDBOX = os.environ.get(
+    "SPOTIFY_EMBED_SANDBOX", "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation allow-forms")
+
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT = True

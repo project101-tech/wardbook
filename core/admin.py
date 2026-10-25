@@ -3,7 +3,7 @@ from django.contrib.auth.admin import UserAdmin
 from django.db.models import Count, Q, Sum
 
 from .models import (Announcement, AnnouncementResponse, ChatGroup, Comment, Community, CommunityEvent,
-                     CommunityMember, GameChallenge, GroupMember, Notification, Payment, PaymentRequest, Post,
+                     CommunityMember, GameChallenge, GroupMember, MusicPlaylist, MusicProfile, Notification, Payment, PaymentRequest, Post,
                      ResidentProfile, User)
 
 admin.site.site_header = "Wardbook Control Room"
@@ -226,3 +226,20 @@ class NotificationAdmin(admin.ModelAdmin):
     list_display = ("recipient", "kind", "title", "is_read", "created_at")
     list_filter = ("kind", "is_read")
     search_fields = ("recipient__username", "title", "body")
+
+
+@admin.register(MusicProfile)
+class MusicProfileAdmin(admin.ModelAdmin):
+    list_display = ("user", "is_shared", "updated_at")
+    list_filter = ("is_shared",)
+    search_fields = ("user__first_name", "user__last_name", "user__profile__house_number")
+    list_select_related = ("user",)
+
+
+@admin.register(MusicPlaylist)
+class MusicPlaylistAdmin(admin.ModelAdmin):
+    list_display = ("display_title", "user", "is_visible", "meta_status", "position", "created_at")
+    list_filter = ("is_visible", "meta_status")
+    search_fields = ("title", "user__first_name", "user__last_name")
+    list_select_related = ("user",)
+    raw_id_fields = ("user",)

@@ -464,3 +464,63 @@ class GameWallet(models.Model):
 
     def __str__(self):
         return f"{self.user.display_name}: {self.tokens} tokens"
+
+
+# --------------------------------------------------------------------------
+# Music Taste: residents share Spotify playlists, neighbours listen through Spotify's own embedded player
+# --------------------------------------------------------------------------
+class MusicProfile(models.Model):
+    """One per resident who has opened Music Taste. Nothing is visible to neighbours until `is_shared` is switched on."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="music_profile")
+    is_shared = models.BooleanField(default=False, db_index=True,
+                                    help_text="Opt-in. When off, neighbours cannot find or see any of this person's music.")
+    about = models.CharField(max_length=280, blank=True)
+    favourites = models.CharField(max_length=250, blank=True, help_text="Favourite artists or tracks")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.display_name} music ({'shared' if self.is_shared else 'private'})"
+
+
+class MusicPlaylist(models.Model):
+    """A Spotify playlist a resident added by link. Only the playlist id is trusted: the link and the embed URL are
+    always rebuilt from it (see core/spotify.py), never taken from what was typed."""
+    class Meta:
+        ordering = ["position", "id"]
+        constraints = [models.UniqueConstraint(fields=["user", "spotify_id"], name="one_music_playlist_per_resident")]
+        indexes = [models.Index(fields=["user", "is_visible", "position"], name="music_pl_user_vis_pos")]
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="music_playlists")
+    spotify_id = models.CharField(max_length=32)
+    title = models.CharField(max_length=200, blank=True)
+    description = models.CharField(max_length=300, blank=True)
+    cover_url = models.URLField(max_length=500, blank=True)
+    is_visible = models.BooleanField(default=True)
+    position = models.PositiveIntegerField(default=0)
+    # what Spotify said the last time we asked: "ok", "unavailable" (private / deleted) or "unknown" (could not ask)
+    meta_status = models.CharField(max_length=12, default="unknown")
+    checked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.display_name}: {self.display_title}"
+
+    @property
+    def display_title(self):
+        return self.title or "Spotify playlist"
+
+    @property
+    def url(self):
+        from .spotify import canonical_url
+        return canonical_url(self.spotify_id)
+
+    @property
+    def embed_url(self):
+        from .spotify import embed_url
+        return embed_url(self.spotify_id)
+
+    @property
+    def is_unavailable(self):
+        return self.meta_status == "unavailable"
