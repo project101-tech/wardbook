@@ -29,7 +29,7 @@ a { text-decoration-thickness: 1px; text-underline-offset: 2px; }
 .wb-toplink:hover { background: rgba(13, 27, 62, .05); }
 .wb-toplink { position: relative; isolation: isolate; }
 .wb-toplink.active { color: var(--wb-accent-dark); background: transparent; }
-.wb-toplink.active::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: rgba(24, 119, 242, .13); view-transition-name: wb-pill-top; }
+.wb-toplink.active::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: rgba(24, 119, 242, .13); }
 .wb-iconlink { transition: background-color .15s, color .15s; }
 .wb-iconlink.active { color: var(--wb-accent-dark); }
 .wb-me .av { box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--wb-line); }
@@ -45,7 +45,7 @@ a { text-decoration-thickness: 1px; text-underline-offset: 2px; }
 .wb-tab i { height: auto; line-height: 1.15; font-size: 1.3rem; transition: transform .18s; }
 .wb-tab { isolation: isolate; }
 .wb-tab.active { background: transparent; color: var(--wb-accent-dark); }
-.wb-tab.active::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: rgba(24, 119, 242, .13); view-transition-name: wb-pill-dock; }
+.wb-tab.active::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: rgba(24, 119, 242, .13); }
 .wb-tab.active i { transform: translateY(-1px) scale(1.08); }
 .wb-tab .wb-badge { left: 50%; margin-left: 8px; top: 3px; }
 #wb-toasts { bottom: calc(100px + env(safe-area-inset-bottom)); }
@@ -56,7 +56,7 @@ a { text-decoration-thickness: 1px; text-underline-offset: 2px; }
 .wb-subtab:hover { background: #fff; color: var(--wb-night); }
 .wb-subtab { position: relative; isolation: isolate; }
 .wb-subtab.active { background: #fff; border-color: transparent; color: var(--wb-accent-dark); }
-.wb-subtab.active::before { content: ""; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; background: rgba(24, 119, 242, .13); box-shadow: inset 0 0 0 1px rgba(24, 119, 242, .3); view-transition-name: wb-pill-sub; }
+.wb-subtab.active::before { content: ""; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; background: rgba(24, 119, 242, .13); box-shadow: inset 0 0 0 1px rgba(24, 119, 242, .3); }
 
 /* ---------- cards, buttons, fields ---------- */
 .card-wb { border-radius: 22px; border: 1px solid rgba(13, 27, 62, .07); box-shadow: var(--wb-card-shadow); }
@@ -155,31 +155,24 @@ code { color: var(--wb-night); background: #F1F5FB !important; border-radius: 10
 .card-wb p:last-child, .card-wb .post-body > :last-child { margin-bottom: 0; }
 .online-dot { margin: 0 .3rem 0 .15rem; }
 
-/* ---------- smooth moves between tabs ----------
-   Chrome/Edge/Safari animate page-to-page navigation (cross-document view transitions). The tab "bubble" glides to the new tab,
-   and the page slides in from the side the new tab sits on. Other browsers just get the fade-in at the bottom. */
-@view-transition { navigation: auto; }
-.wb-top { view-transition-name: wb-top; }
-.wb-tabs { view-transition-name: wb-dock; }
-.wb-main { view-transition-name: wb-page; }
-.wb-subtabs { view-transition-name: wb-sub; }
-::view-transition-group(root), ::view-transition-group(wb-page) { animation: none; }
-::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
-::view-transition-group(wb-pill-dock), ::view-transition-group(wb-pill-top), ::view-transition-group(wb-pill-sub) { animation-duration: .46s; animation-timing-function: cubic-bezier(.34, 1.45, .5, 1); }
-::view-transition-old(wb-pill-dock), ::view-transition-old(wb-pill-top), ::view-transition-old(wb-pill-sub) { display: none; }
-::view-transition-new(wb-pill-dock), ::view-transition-new(wb-pill-top), ::view-transition-new(wb-pill-sub) { animation: none; block-size: 100%; inline-size: 100%; }
-
-:root.vt-fwd::view-transition-old(wb-page) { animation: wb-out-left .2s ease-in both; }
-:root.vt-fwd::view-transition-new(wb-page) { animation: wb-in-right .42s cubic-bezier(.2, .8, .2, 1) .05s both; }
-:root.vt-back::view-transition-old(wb-page) { animation: wb-out-right .2s ease-in both; }
-:root.vt-back::view-transition-new(wb-page) { animation: wb-in-left .42s cubic-bezier(.2, .8, .2, 1) .05s both; }
-@keyframes wb-out-left { to { opacity: 0; transform: translateX(-32px); } }
-@keyframes wb-out-right { to { opacity: 0; transform: translateX(32px); } }
-@keyframes wb-in-right { from { opacity: 0; transform: translateX(32px); } }
-@keyframes wb-in-left { from { opacity: 0; transform: translateX(-32px); } }
-.wb-main.wb-in-fwd { animation: wb-in-right .4s cubic-bezier(.2, .8, .2, 1) both; }
-.wb-main.wb-in-back { animation: wb-in-left .4s cubic-bezier(.2, .8, .2, 1) both; }
+/* ---------- fast tab changes ----------
+   The moment you tap a tab, the bubble flies to it and the page slides away; the next page slides in from the same side.
+   (No waiting for the server before anything moves.) */
+.wb-tabs, .wb-hubs, .wb-subtabs { position: relative; }
+.wb-tabs { position: fixed; }
+.wb-pill-fly { position: absolute; z-index: 1; left: 0; top: 0; pointer-events: none; background: rgba(24, 119, 242, .13); will-change: transform, width; }
+.wb-subtabs .wb-pill-fly { box-shadow: inset 0 0 0 1px rgba(24, 119, 242, .3); }
+.wb-tab.is-next, .wb-toplink.is-next { color: var(--wb-accent-dark); }
+.wb-tab.is-next i { transform: translateY(-1px) scale(1.08); }
+.wb-subtab.is-next { color: var(--wb-accent-dark); }
+.wb-leaving-fwd .wb-main > :not(.wb-subtabs) { animation: wb-out-left .12s ease-in both; }
+.wb-leaving-back .wb-main > :not(.wb-subtabs) { animation: wb-out-right .12s ease-in both; }
+.wb-enter-fwd .wb-main > :not(.wb-subtabs) { animation: wb-in-right .22s cubic-bezier(.2, .8, .2, 1) both; }
+.wb-enter-back .wb-main > :not(.wb-subtabs) { animation: wb-in-left .22s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes wb-out-left { to { opacity: 0; transform: translateX(-22px); } }
+@keyframes wb-out-right { to { opacity: 0; transform: translateX(22px); } }
+@keyframes wb-in-right { from { opacity: 0; transform: translateX(22px); } }
+@keyframes wb-in-left { from { opacity: 0; transform: translateX(-22px); } }
 @media (prefers-reduced-motion: reduce) {
-  @view-transition { navigation: none; }
-  .wb-main.wb-in-fwd, .wb-main.wb-in-back { animation: none; }
+  .wb-leaving-fwd .wb-main > *, .wb-leaving-back .wb-main > *, .wb-enter-fwd .wb-main > *, .wb-enter-back .wb-main > * { animation: none !important; }
 }

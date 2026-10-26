@@ -113,36 +113,15 @@
     #wb-push-bar { background: var(--wb-accent-soft); border-bottom: 1px solid #cfe1ff; }
   </style>
   <link rel="stylesheet" href="{% static 'css/wardbook-ui.css' %}">
-  <link rel="expect" href="#wb-nav-ready" blocking="render">
   <script>
-  /* Which way did we move? Tabs are ordered Town Square < Notices < Payments < Connect < Hangout, and the sub-tabs inside a hub left to right. */
+  /* arriving from a tab tap: slide in from the side the tab sits on (set by the click handler near the end of the page) */
   (function () {
-    function pos() {
-      var tabs = document.querySelectorAll('.wb-tab'), i = -1, j = 0, k;
-      for (k = 0; k < tabs.length; k++) if (tabs[k].classList.contains('active')) i = k;
-      if (i < 0) return null;
-      var subs = document.querySelectorAll('.wb-subtab');
-      for (k = 0; k < subs.length; k++) if (subs[k].classList.contains('active')) j = k;
-      return i * 10 + j;
-    }
-    function moved() {
-      var now = pos(), prev = null;
-      try { prev = parseInt(sessionStorage.getItem('wbPos'), 10); if (isNaN(prev)) prev = null; if (now !== null) sessionStorage.setItem('wbPos', now); } catch (e) {}
-      return (now === null || prev === null || now === prev) ? 0 : (now > prev ? 1 : -1);
-    }
-    var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if ('PageRevealEvent' in window) {
-      window.addEventListener('pagereveal', function (e) {
-        var d = moved(); if (!e.viewTransition) return;
-        if (!d || reduce) { e.viewTransition.skipTransition(); return; }
-        var root = document.documentElement; root.classList.add(d > 0 ? 'vt-fwd' : 'vt-back');
-        e.viewTransition.finished.then(function () { root.classList.remove('vt-fwd', 'vt-back'); }, function () { root.classList.remove('vt-fwd', 'vt-back'); });
-      });
-    } else if (!reduce) {
-      document.addEventListener('DOMContentLoaded', function () {
-        var d = moved(), m = document.querySelector('.wb-main'); if (d && m) m.classList.add(d > 0 ? 'wb-in-fwd' : 'wb-in-back');
-      });
-    }
+    try {
+      var v = sessionStorage.getItem('wbDir'); sessionStorage.removeItem('wbDir');
+      if (!v || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
+      var parts = v.split(','), d = parseInt(parts[0], 10);
+      if (d && Date.now() - parseInt(parts[1], 10) < 5000) document.documentElement.classList.add(d > 0 ? 'wb-enter-fwd' : 'wb-enter-back');
+    } catch (e) {}
   })();
   </script>
   {% block head %}{% endblock %}
@@ -203,7 +182,46 @@
   </nav>
 {% endif %}
 {% endwith %}
-<i id="wb-nav-ready" hidden></i>
+{% if user.is_authenticated %}
+<script type="speculationrules">{"prefetch":[{"where":{"selector_matches":".wb-tab, .wb-toplink, .wb-subtab, .wb-iconlink, .wb-brand"},"eagerness":"moderate"}]}</script>
+<script>
+/* Tap a tab: the bubble flies over and the page slides away at once, so it feels instant even while the next page is still loading. */
+(function () {
+  var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches, undo = null;
+  function pos(el) {
+    var tabs = document.querySelectorAll('.wb-tab'), subs = document.querySelectorAll('.wb-subtab'), i = -1, j = 0, k;
+    if (el.classList.contains('wb-subtab')) { for (k = 0; k < tabs.length; k++) if (tabs[k].classList.contains('active')) i = k; return Math.max(i, 0) * 10 + [].indexOf.call(subs, el); }
+    var all = el.classList.contains('wb-tab') ? tabs : document.querySelectorAll('.wb-toplink');
+    return [].indexOf.call(all, el) * 10;
+  }
+  function here() {
+    var tabs = document.querySelectorAll('.wb-tab'), subs = document.querySelectorAll('.wb-subtab'), i = -1, j = 0, k;
+    for (k = 0; k < tabs.length; k++) if (tabs[k].classList.contains('active')) i = k;
+    for (k = 0; k < subs.length; k++) if (subs[k].classList.contains('active')) j = k;
+    return i < 0 ? null : i * 10 + j;
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('.wb-tab, .wb-toplink, .wb-subtab');
+    if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.target === '_blank') return;
+    var box = a.closest('.wb-tabs, .wb-hubs, .wb-subtabs'), from = box && box.querySelector('.active');
+    if (!box || !from || from === a) return;
+    var now = here(), next = pos(a), d = (now === null || next === now) ? 0 : (next > now ? 1 : -1);
+    try { if (d) sessionStorage.setItem('wbDir', d + ',' + Date.now()); } catch (x) {}
+    if (reduce) return;
+    var br = box.getBoundingClientRect(), fr = from.getBoundingClientRect(), tr = a.getBoundingClientRect(), cs = getComputedStyle(from);
+    var pill = document.createElement('i'); pill.className = 'wb-pill-fly';
+    pill.style.cssText = 'left:' + (fr.left - br.left + box.scrollLeft - box.clientLeft) + 'px;top:' + (fr.top - br.top + box.scrollTop - box.clientTop) + 'px;width:' + fr.width + 'px;height:' + fr.height + 'px;border-radius:' + cs.borderRadius;
+    box.insertBefore(pill, box.firstChild);
+    from.classList.remove('active'); a.classList.add('is-next');
+    pill.animate([{ transform: 'translate(0,0)', width: fr.width + 'px' }, { transform: 'translate(' + (tr.left - fr.left) + 'px,' + (tr.top - fr.top) + 'px)', width: tr.width + 'px' }],
+                 { duration: 190, easing: 'cubic-bezier(.3, 1.25, .5, 1)', fill: 'forwards' });
+    if (d) document.documentElement.classList.add(d > 0 ? 'wb-leaving-fwd' : 'wb-leaving-back');
+    undo = function () { pill.remove(); from.classList.add('active'); a.classList.remove('is-next'); document.documentElement.classList.remove('wb-leaving-fwd', 'wb-leaving-back'); };
+  });
+  window.addEventListener('pageshow', function (e) { if (e.persisted && undo) { undo(); undo = null; } });
+})();
+</script>
+{% endif %}
 {% if user.is_authenticated %}
 <div id="wb-toasts" aria-live="polite"></div>
 <script>
