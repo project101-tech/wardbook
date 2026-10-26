@@ -137,11 +137,14 @@ class MusicViewTests(TestCase):
         self.assertContains(r, "Nobody has shared music yet")       # she is the only sharer and never sees herself in the grid
 
     def test_nav_item_present(self):
+        """Music Taste now lives inside the Hangout tab (Games | Music Taste)."""
         self.login(self.ravi)
-        r = self.client.get(reverse("feed"))
+        r = self.client.get(reverse("games"))
+        self.assertContains(r, 'class="wb-subtabs')
         self.assertContains(r, reverse("music"))
         self.assertContains(r, "Music Taste")
         self.assertContains(r, "bi-music-note-beamed")
+        self.assertContains(self.client.get(reverse("feed")), "Hangout")
 
     # ---- 5/6: embedded player + open in Spotify ----
     def test_profile_embeds_official_player(self):

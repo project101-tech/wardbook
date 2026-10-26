@@ -35,15 +35,34 @@
     .wb-toplink:hover { color: var(--wb-ink); background: var(--wb-bg); }
     .wb-toplink.active { color: var(--wb-accent); background: var(--wb-accent-soft); }
     .wb-toplink { white-space: nowrap; }
-    @media (min-width: 768px) { .wb-toplink { padding: .45rem .5rem; font-size: .86rem; } .wb-top nav { gap: 0 !important; } }
-    @media (min-width: 768px) and (max-width: 991px) { .wb-toplink .wb-lbl { display: none; } .wb-brand span { display: none; } }
+    .wb-hubs { gap: .15rem; }
+    .wb-hubs .wb-toplink { display: inline-flex; align-items: center; gap: .4rem; padding: .5rem .8rem; }
+    .wb-hubs .wb-toplink .wb-badge, .wb-subtab .wb-badge { position: static; margin: 0 0 0 .1rem; }
+    @media (max-width: 991px) { .wb-hubs .wb-toplink { padding: .5rem .55rem; font-size: .84rem; gap: .3rem; } .wb-brand-name { display: none !important; } }
+    .wb-iconlink { position: relative; display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; color: var(--wb-muted); text-decoration: none; font-size: 1.2rem; }
+    .wb-iconlink:hover { background: var(--wb-bg); color: var(--wb-ink); }
+    .wb-iconlink.active { background: var(--wb-accent-soft); color: var(--wb-accent); }
+    .wb-iconlink .wb-badge { top: 1px; left: auto; right: -1px; margin: 0; }
+    .wb-me .av { width: 34px; height: 34px; font-size: .9rem; }
+    .wb-me.active { box-shadow: 0 0 0 2px var(--wb-accent); }
+    /* the little tab strip inside Connect and Hangout */
+    .wb-subtabs { display: flex; gap: .35rem; overflow-x: auto; padding: .15rem .1rem .6rem; margin: 0 -.1rem; scrollbar-width: none; }
+    .wb-subtabs::-webkit-scrollbar { display: none; }
+    .wb-subtab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: .4rem; padding: .45rem .95rem; border-radius: 999px; background: #fff; border: 1px solid var(--wb-line);
+                 color: var(--wb-muted); font-weight: 700; font-size: .88rem; text-decoration: none; }
+    .wb-subtab:hover { color: var(--wb-ink); }
+    .wb-subtab.active { background: var(--wb-accent); border-color: var(--wb-accent); color: #fff; }
+    .wb-subtabs.n3 .wb-subtab, .wb-subtabs.n2 .wb-subtab { flex: 1 1 0; justify-content: center; }
+    @media (max-width: 575px) { .wb-subtab { padding: .45rem .55rem; font-size: .82rem; gap: .3rem; } .wb-subtabs { gap: .3rem; } }
+    @media (max-width: 439px) { .wb-subtabs.n3 .wb-subtab i { display: none; } }
+    @media (min-width: 768px) { .wb-subtabs.n3 .wb-subtab, .wb-subtabs.n2 .wb-subtab { flex: 0 0 auto; } }
 
     /* bottom tab bar (mobile) */
     .wb-tabs { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; background: #fff; border-top: 1px solid var(--wb-line);
            display: flex; gap: .25rem; overflow-x: auto; white-space: nowrap; padding: .35rem .5rem calc(.35rem + env(safe-area-inset-bottom));
            scrollbar-width: none; }
     .wb-tabs::-webkit-scrollbar { display: none; }
-    .wb-tab { flex: 0 0 auto; min-width: 66px; height: 48px; text-align: center; text-decoration: none; color: var(--wb-muted); font-size: .68rem; font-weight: 600;
+    .wb-tab { flex: 1 1 0; min-width: 0; height: 48px; text-align: center; text-decoration: none; color: var(--wb-muted); font-size: .68rem; font-weight: 600;
           position: relative; padding: .25rem .45rem; border-radius: 10px; line-height: 1.1; }
     .wb-tab i { display:block; height: 24px; line-height: 22px; font-size: 1.25rem; }
     .wb-tab .wb-badge { top: 0; }
@@ -110,25 +129,16 @@
     <div class="container d-flex align-items-center justify-content-between py-2" style="max-width: 1000px;">
       <a href="{% url 'feed' %}" class="wb-brand">
         <svg class="wb-mark" aria-hidden="true"><use href="#wb-logo"/></svg>
-        <span>Wardbook</span>
+        <span class="wb-brand-name d-none d-sm-inline">Wardbook</span>
       </a>
-      <nav class="d-none d-md-flex align-items-center gap-1">
-        <a class="wb-toplink {% if here == 'feed' %}active{% endif %}" href="{% url 'feed' %}">Town Square</a>
-        <a class="wb-toplink {% if here == 'announcements' %}active{% endif %}" href="{% url 'announcements' %}">Notices</a>
-        <a class="wb-toplink {% if here == 'payments' %}active{% endif %}" href="{% url 'payments' %}">Payments</a>
-        <a class="wb-toplink {% if here == 'directory' %}active{% endif %}" href="{% url 'directory' %}">Neighbours</a>
-        <a class="wb-toplink {% if here == 'communities' %}active{% endif %}" href="{% url 'communities' %}">Communities</a>
-        <a class="wb-toplink {% if here == 'games' %}active{% endif %}" href="{% url 'games' %}">Games</a>
-        <a class="wb-toplink {% if here == 'music' or here == 'music_profile' or here == 'music_manage' %}active{% endif %}" href="{% url 'music' %}"> <span class="wb-lbl">Music Taste</span></a>
-        <a class="wb-toplink {% if here == 'inbox' or here == 'conversation' or here == 'group' %}active{% endif %}" href="{% url 'inbox' %}">Messages <span class="wb-badge js-dms {% if not unread_dms %}d-none{% endif %}" style="position:static;margin-left:2px">{{ unread_dms }}</span></a>
-        <a class="wb-toplink {% if here == 'notifications' %}active{% endif %}" href="{% url 'notifications' %}" title="Notifications"><i class="bi bi-bell-fill"></i> <span class="wb-badge js-notifs {% if not unread_notifications %}d-none{% endif %}" style="position:static;margin-left:2px">{{ unread_notifications }}</span></a>
-        <a class="wb-toplink {% if here == 'profile' %}active{% endif %}" href="{% url 'profile' %}">{{ user.first_name|default:user.username }}</a>
-        {% if user.is_staff %}<a class="wb-toplink" href="/admin/" title="Control room"><i class="bi bi-gear-fill"></i></a>{% endif %}
+      <nav class="wb-hubs d-none d-md-flex align-items-center" aria-label="Main">
+        {% for h in hubs %}<a class="wb-toplink {% if h.active %}active{% endif %}" href="{% url h.url %}"><i class="bi bi-{% if h.active %}{{ h.on }}{% else %}{{ h.icon }}{% endif %}"></i>{{ h.label }}{% if h.badge %}<span class="wb-badge js-dms {% if not unread_dms %}d-none{% endif %}">{{ unread_dms }}</span>{% endif %}</a>{% endfor %}
       </nav>
-      <div class="d-md-none">
-        <a class="wb-toplink" href="{% url 'directory' %}" title="Neighbours"><i class="bi bi-people-fill"></i></a>
-        <a class="wb-toplink" href="{% url 'notifications' %}" title="Notifications"><i class="bi bi-bell-fill"></i><span class="wb-badge js-notifs {% if not unread_notifications %}d-none{% endif %}">{{ unread_notifications }}</span></a>
-        {% if user.is_staff %}<a class="wb-toplink" href="/admin/" title="Control room"><i class="bi bi-gear-fill"></i></a>{% endif %}
+      <div class="d-flex align-items-center gap-1">
+        <a class="wb-iconlink {% if here == 'directory' %}active{% endif %}" href="{% url 'directory' %}" title="Neighbours" aria-label="Neighbours"><i class="bi bi-people-fill"></i></a>
+        <a class="wb-iconlink {% if here == 'notifications' %}active{% endif %}" href="{% url 'notifications' %}" title="Notifications" aria-label="Notifications"><i class="bi bi-bell-fill"></i><span class="wb-badge js-notifs {% if not unread_notifications %}d-none{% endif %}">{{ unread_notifications }}</span></a>
+        {% if user.is_staff %}<a class="wb-iconlink" href="/admin/" title="Control room" aria-label="Control room"><i class="bi bi-gear-fill"></i></a>{% endif %}
+        <a class="wb-iconlink wb-me {% if here == 'profile' %}active{% endif %}" href="{% url 'profile' %}" title="My profile" aria-label="My profile">{{ user.avatar_html }}</a>
       </div>
     </div>
   </header>
@@ -146,22 +156,17 @@
   {% for m in messages %}
     <div class="alert alert-{% if m.tags == 'error' %}danger{% else %}{{ m.tags|default:'info' }}{% endif %} shadow-sm" role="alert">{{ m }}</div>
   {% endfor %}
+  {% if user.is_authenticated and subtabs %}
+  <nav class="wb-subtabs n{{ subtabs|length }}" aria-label="{% if hub == 'connect' %}Connect{% else %}Hangout{% endif %}">
+    {% for t in subtabs %}<a class="wb-subtab {% if t.active %}active{% endif %}" href="{% url t.url %}" {% if t.active %}aria-current="page"{% endif %}><i class="bi bi-{{ t.icon }}"></i>{{ t.label }}{% if t.badge %}<span class="wb-badge js-dms {% if not unread_dms %}d-none{% endif %}">{{ unread_dms }}</span>{% endif %}</a>{% endfor %}
+  </nav>
+  {% endif %}
   {% block content %}{% endblock %}
 </main>
 
 {% if user.is_authenticated %}
   <nav class="wb-tabs d-md-none" aria-label="Main">
-    <a class="wb-tab {% if here == 'feed' %}active{% endif %}" href="{% url 'feed' %}"><i class="bi bi-house-heart{% if here == 'feed' %}-fill{% endif %}"></i>Town Square</a>
-    <a class="wb-tab {% if here == 'announcements' %}active{% endif %}" href="{% url 'announcements' %}"><i class="bi bi-megaphone{% if here == 'announcements' %}-fill{% endif %}"></i>Notices</a>
-    <a class="wb-tab {% if here == 'payments' %}active{% endif %}" href="{% url 'payments' %}"><i class="bi bi-wallet2"></i>Pay</a>
-    <a class="wb-tab {% if here == 'inbox' or here == 'conversation' or here == 'group' %}active{% endif %}" href="{% url 'inbox' %}"><i class="bi bi-chat-dots{% if here == 'inbox' or here == 'conversation' or here == 'group' %}-fill{% endif %}"></i>Chat<span class="wb-badge js-dms {% if not unread_dms %}d-none{% endif %}">{{ unread_dms }}</span></a>
-    <a class="wb-tab {% if here == 'games' or here == 'game_play' %}active{% endif %}" href="{% url 'games' %}"><i class="bi bi-controller"></i>Games</a>
-    <a class="wb-tab {% if here == 'music' or here == 'music_profile' or here == 'music_manage' %}active{% endif %}" href="{% url 'music' %}"><i class="bi bi-music-note-beamed"></i>Music Taste
-    </a>
-    <a class="wb-tab {% if here == 'communities' or here == 'community_detail' %}active{% endif %}" href="{% url 'communities' %}"><i class="bi bi-people{% if here == 'communities' or here == 'community_detail' %}-fill{% endif %}"></i>Groups</a>
-    <a class="wb-tab {% if here == 'directory' %}active{% endif %}" href="{% url 'directory' %}"><i class="bi bi-person-lines-fill"></i>Neighbours</a>
-    <a class="wb-tab {% if here == 'notifications' %}active{% endif %}" href="{% url 'notifications' %}"><i class="bi bi-bell{% if here == 'notifications' %}-fill{% endif %}"></i>Alerts<span class="wb-badge js-notifs {% if not unread_notifications %}d-none{% endif %}">{{ unread_notifications }}</span></a>
-    <a class="wb-tab {% if here == 'profile' %}active{% endif %}" href="{% url 'profile' %}"><i class="bi bi-person-circle"></i>Me</a>
+    {% for h in hubs %}<a class="wb-tab {% if h.active %}active{% endif %}" href="{% url h.url %}"><i class="bi bi-{% if h.active %}{{ h.on }}{% else %}{{ h.icon }}{% endif %}"></i>{{ h.short }}{% if h.badge %}<span class="wb-badge js-dms {% if not unread_dms %}d-none{% endif %}">{{ unread_dms }}</span>{% endif %}</a>{% endfor %}
   </nav>
 {% endif %}
 {% endwith %}

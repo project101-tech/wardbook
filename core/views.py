@@ -24,6 +24,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from . import live, push
+from .navigation import nav_context
 from .models import (Announcement, AnnouncementResponse, ChatGroup, Comment, Community, CommunityEvent, EventPoke,
                      CommunityMember, CommunityPost, GameChallenge, GameChatMessage, GameParticipant, GameSession, GroupMember, Message, Notification, Payment, PaymentRequest, Post,
                      TypingIndicator,
@@ -56,6 +57,7 @@ def nav(request):
         ctx["unread_dms"] = dms + sum(m.unread for m in group_memberships(request.user))
         ctx["unread_notifications"] = Notification.objects.filter(recipient=request.user, is_read=False).count()
         ctx["latest_notification_id"] = Notification.objects.filter(recipient=request.user).aggregate(m=Max("id"))["m"] or 0
+        ctx.update(nav_context(request.resolver_match.url_name if request.resolver_match else ""))
     return ctx
 
 
