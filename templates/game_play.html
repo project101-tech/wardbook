@@ -39,6 +39,7 @@
 </div>
 <div class="gm-chat-backdrop" id="gm-chat-backdrop" hidden></div>
 <button type="button" id="gm-chat-fab" class="gm-chat-fab" aria-controls="gm-chat" aria-expanded="false"><i class="bi bi-chat-dots-fill"></i><span>Chat</span><b id="gm-chat-badge" hidden>0</b></button>
+<button type="button" id="gm-chat-peek" class="gm-chat-peek" hidden aria-live="polite"></button>
 
 <div id="gm-result" class="gm-result"><div class="box">
   <div class="big" id="gm-result-big"></div><h2 id="gm-result-title"></h2><div class="why" id="gm-result-why"></div>
@@ -69,13 +70,14 @@ WBGame.boot({
 /* Phones: chat is a bottom sheet opened from the Chat button, so nobody has to scroll to reach it. */
 (function () {
   var panel = document.getElementById('gm-chat'), fab = document.getElementById('gm-chat-fab'), back = document.getElementById('gm-chat-backdrop'),
-      badge = document.getElementById('gm-chat-badge'), log = document.getElementById('gm-chat-log'), unread = 0, ready = false, isOpen = false;
+      badge = document.getElementById('gm-chat-badge'), log = document.getElementById('gm-chat-log'), unread = 0, ready = false, isOpen = false, peek = document.getElementById('gm-chat-peek'), peekTimer = null;
   function set(open) {
     isOpen = open; panel.classList.toggle('open', open); back.hidden = !open; fab.setAttribute('aria-expanded', open ? 'true' : 'false');
     document.documentElement.classList.toggle('gm-chat-open', open);
-    if (open) { unread = 0; badge.hidden = true; log.scrollTop = log.scrollHeight; } else { document.documentElement.style.removeProperty('--gm-kb'); fab.focus({ preventScroll: true }); }
+    peek.hidden = true; if (open) { unread = 0; badge.hidden = true; log.scrollTop = log.scrollHeight; } else { document.documentElement.style.removeProperty('--gm-kb'); fab.focus({ preventScroll: true }); }
   }
   fab.addEventListener('click', function () { set(true); });
+  peek.addEventListener('click', function () { set(true); });
   document.getElementById('gm-chat-close').addEventListener('click', function () { set(false); });
   back.addEventListener('click', function () { set(false); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && isOpen) set(false); });
@@ -84,6 +86,11 @@ WBGame.boot({
     list.forEach(function (m) { m.addedNodes.forEach(function (n) {
       if (!ready || isOpen || !n.classList || n.classList.contains('mine')) return;
       unread += 1; badge.textContent = unread > 9 ? '9+' : unread; badge.hidden = false;
+      var who = n.querySelector('small'), what = n.querySelector('span');
+      peek.textContent = ''; var b = document.createElement('b'); b.textContent = who ? who.textContent : 'New message'; peek.appendChild(b);
+      peek.appendChild(document.createTextNode(what ? what.textContent : '')); peek.hidden = false;
+      fab.classList.remove('ping'); void fab.offsetWidth; fab.classList.add('ping');
+      clearTimeout(peekTimer); peekTimer = setTimeout(function () { peek.hidden = true; }, 5000);
     }); });
   }).observe(log, { childList: true });
   /* keep the sheet above the on-screen keyboard */
