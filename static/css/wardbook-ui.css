@@ -27,7 +27,9 @@ a { text-decoration-thickness: 1px; text-underline-offset: 2px; }
 .wb-brand:hover { color: var(--wb-night); }
 .wb-toplink { font-weight: 700; color: var(--wb-muted); border-radius: 12px; transition: background-color .15s, color .15s; }
 .wb-toplink:hover { background: rgba(13, 27, 62, .05); }
-.wb-toplink.active { color: var(--wb-accent-dark); background: var(--wb-accent-soft); }
+.wb-toplink { position: relative; isolation: isolate; }
+.wb-toplink.active { color: var(--wb-accent-dark); background: transparent; }
+.wb-toplink.active::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: rgba(24, 119, 242, .13); view-transition-name: wb-pill-top; }
 .wb-iconlink { transition: background-color .15s, color .15s; }
 .wb-iconlink.active { color: var(--wb-accent-dark); }
 .wb-me .av { box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--wb-line); }
@@ -37,11 +39,13 @@ a { text-decoration-thickness: 1px; text-underline-offset: 2px; }
 
 /* ---------- phone dock (the five tabs) ---------- */
 .wb-tabs { left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); border: 1px solid var(--wb-line); border-radius: 26px; padding: .3rem; gap: .15rem;
-           background: rgba(255, 255, 255, .9); -webkit-backdrop-filter: blur(18px) saturate(1.6); backdrop-filter: blur(18px) saturate(1.6);
+           background: rgba(255, 255, 255, .97);
            box-shadow: 0 14px 34px -10px rgba(13, 27, 62, .35), 0 2px 6px rgba(13, 27, 62, .06); overflow: visible; }
 .wb-tab { height: 54px; border-radius: 20px; font-size: .66rem; font-weight: 700; letter-spacing: .005em; padding: .35rem .1rem; transition: background-color .18s, color .18s; }
 .wb-tab i { height: auto; line-height: 1.15; font-size: 1.3rem; transition: transform .18s; }
-.wb-tab.active { background: var(--wb-accent-soft); color: var(--wb-accent-dark); }
+.wb-tab { isolation: isolate; }
+.wb-tab.active { background: transparent; color: var(--wb-accent-dark); }
+.wb-tab.active::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: rgba(24, 119, 242, .13); view-transition-name: wb-pill-dock; }
 .wb-tab.active i { transform: translateY(-1px) scale(1.08); }
 .wb-tab .wb-badge { left: 50%; margin-left: 8px; top: 3px; }
 #wb-toasts { bottom: calc(100px + env(safe-area-inset-bottom)); }
@@ -50,7 +54,9 @@ a { text-decoration-thickness: 1px; text-underline-offset: 2px; }
 .wb-subtabs { gap: .4rem; padding-bottom: .75rem; }
 .wb-subtab { background: rgba(255, 255, 255, .9); border-color: var(--wb-line); color: var(--wb-muted); transition: background-color .15s, color .15s, box-shadow .15s; }
 .wb-subtab:hover { background: #fff; color: var(--wb-night); }
-.wb-subtab.active { background: var(--wb-night); border-color: var(--wb-night); color: #fff; box-shadow: 0 6px 14px -6px rgba(13, 27, 62, .55); }
+.wb-subtab { position: relative; isolation: isolate; }
+.wb-subtab.active { background: #fff; border-color: transparent; color: var(--wb-accent-dark); }
+.wb-subtab.active::before { content: ""; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; background: rgba(24, 119, 242, .13); box-shadow: inset 0 0 0 1px rgba(24, 119, 242, .3); view-transition-name: wb-pill-sub; }
 
 /* ---------- cards, buttons, fields ---------- */
 .card-wb { border-radius: 22px; border: 1px solid rgba(13, 27, 62, .07); box-shadow: var(--wb-card-shadow); }
@@ -148,3 +154,32 @@ code { color: var(--wb-night); background: #F1F5FB !important; border-radius: 10
 /* tidy: no dead space under the last paragraph inside a card */
 .card-wb p:last-child, .card-wb .post-body > :last-child { margin-bottom: 0; }
 .online-dot { margin: 0 .3rem 0 .15rem; }
+
+/* ---------- smooth moves between tabs ----------
+   Chrome/Edge/Safari animate page-to-page navigation (cross-document view transitions). The tab "bubble" glides to the new tab,
+   and the page slides in from the side the new tab sits on. Other browsers just get the fade-in at the bottom. */
+@view-transition { navigation: auto; }
+.wb-top { view-transition-name: wb-top; }
+.wb-tabs { view-transition-name: wb-dock; }
+.wb-main { view-transition-name: wb-page; }
+.wb-subtabs { view-transition-name: wb-sub; }
+::view-transition-group(root), ::view-transition-group(wb-page) { animation: none; }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-group(wb-pill-dock), ::view-transition-group(wb-pill-top), ::view-transition-group(wb-pill-sub) { animation-duration: .46s; animation-timing-function: cubic-bezier(.34, 1.45, .5, 1); }
+::view-transition-old(wb-pill-dock), ::view-transition-old(wb-pill-top), ::view-transition-old(wb-pill-sub) { display: none; }
+::view-transition-new(wb-pill-dock), ::view-transition-new(wb-pill-top), ::view-transition-new(wb-pill-sub) { animation: none; block-size: 100%; inline-size: 100%; }
+
+:root.vt-fwd::view-transition-old(wb-page) { animation: wb-out-left .2s ease-in both; }
+:root.vt-fwd::view-transition-new(wb-page) { animation: wb-in-right .42s cubic-bezier(.2, .8, .2, 1) .05s both; }
+:root.vt-back::view-transition-old(wb-page) { animation: wb-out-right .2s ease-in both; }
+:root.vt-back::view-transition-new(wb-page) { animation: wb-in-left .42s cubic-bezier(.2, .8, .2, 1) .05s both; }
+@keyframes wb-out-left { to { opacity: 0; transform: translateX(-32px); } }
+@keyframes wb-out-right { to { opacity: 0; transform: translateX(32px); } }
+@keyframes wb-in-right { from { opacity: 0; transform: translateX(32px); } }
+@keyframes wb-in-left { from { opacity: 0; transform: translateX(-32px); } }
+.wb-main.wb-in-fwd { animation: wb-in-right .4s cubic-bezier(.2, .8, .2, 1) both; }
+.wb-main.wb-in-back { animation: wb-in-left .4s cubic-bezier(.2, .8, .2, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  @view-transition { navigation: none; }
+  .wb-main.wb-in-fwd, .wb-main.wb-in-back { animation: none; }
+}

@@ -113,6 +113,38 @@
     #wb-push-bar { background: var(--wb-accent-soft); border-bottom: 1px solid #cfe1ff; }
   </style>
   <link rel="stylesheet" href="{% static 'css/wardbook-ui.css' %}">
+  <link rel="expect" href="#wb-nav-ready" blocking="render">
+  <script>
+  /* Which way did we move? Tabs are ordered Town Square < Notices < Payments < Connect < Hangout, and the sub-tabs inside a hub left to right. */
+  (function () {
+    function pos() {
+      var tabs = document.querySelectorAll('.wb-tab'), i = -1, j = 0, k;
+      for (k = 0; k < tabs.length; k++) if (tabs[k].classList.contains('active')) i = k;
+      if (i < 0) return null;
+      var subs = document.querySelectorAll('.wb-subtab');
+      for (k = 0; k < subs.length; k++) if (subs[k].classList.contains('active')) j = k;
+      return i * 10 + j;
+    }
+    function moved() {
+      var now = pos(), prev = null;
+      try { prev = parseInt(sessionStorage.getItem('wbPos'), 10); if (isNaN(prev)) prev = null; if (now !== null) sessionStorage.setItem('wbPos', now); } catch (e) {}
+      return (now === null || prev === null || now === prev) ? 0 : (now > prev ? 1 : -1);
+    }
+    var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if ('PageRevealEvent' in window) {
+      window.addEventListener('pagereveal', function (e) {
+        var d = moved(); if (!e.viewTransition) return;
+        if (!d || reduce) { e.viewTransition.skipTransition(); return; }
+        var root = document.documentElement; root.classList.add(d > 0 ? 'vt-fwd' : 'vt-back');
+        e.viewTransition.finished.then(function () { root.classList.remove('vt-fwd', 'vt-back'); }, function () { root.classList.remove('vt-fwd', 'vt-back'); });
+      });
+    } else if (!reduce) {
+      document.addEventListener('DOMContentLoaded', function () {
+        var d = moved(), m = document.querySelector('.wb-main'); if (d && m) m.classList.add(d > 0 ? 'wb-in-fwd' : 'wb-in-back');
+      });
+    }
+  })();
+  </script>
   {% block head %}{% endblock %}
 </head>
 <body{% if user.is_authenticated %} data-nid="{{ latest_notification_id|default:0 }}"{% endif %}>
@@ -171,6 +203,7 @@
   </nav>
 {% endif %}
 {% endwith %}
+<i id="wb-nav-ready" hidden></i>
 {% if user.is_authenticated %}
 <div id="wb-toasts" aria-live="polite"></div>
 <script>
