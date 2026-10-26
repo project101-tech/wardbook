@@ -26,8 +26,8 @@
     {% if payload.game == 'chess' %}
     <div class="gm-panel"><h2>Moves</h2><div id="ch-moves" class="moves"></div></div>
     {% endif %}
-    <div class="gm-panel">
-      <h2>Chat</h2>
+    <div class="gm-panel gm-chat" id="gm-chat" role="dialog" aria-label="Chat">
+      <div class="gm-chat-head"><h2>Chat</h2><button type="button" id="gm-chat-close" class="gm-chat-close" aria-label="Close chat"><i class="bi bi-x-lg"></i></button></div>
       <div id="gm-chat-log" class="gm-chat-log"></div>
       <form id="gm-chat-form" class="d-flex gap-1 pt-2" autocomplete="off">
         <input id="gm-chat-input" class="form-control form-control-sm" maxlength="500" placeholder="Say something…">
@@ -37,6 +37,8 @@
     </div>
   </aside>
 </div>
+<div class="gm-chat-backdrop" id="gm-chat-backdrop" hidden></div>
+<button type="button" id="gm-chat-fab" class="gm-chat-fab" aria-controls="gm-chat" aria-expanded="false"><i class="bi bi-chat-dots-fill"></i><span>Chat</span><b id="gm-chat-badge" hidden>0</b></button>
 
 <div id="gm-result" class="gm-result"><div class="box">
   <div class="big" id="gm-result-big"></div><h2 id="gm-result-title"></h2><div class="why" id="gm-result-why"></div>
@@ -62,5 +64,34 @@ WBGame.boot({
   urls: { move: '{% url "game_move" session.pk %}', state: '{% url "game_state" session.pk %}', chat: '{% url "game_chat" session.pk %}',
           rematch: '{% url "game_rematch" session.pk %}', games: '{% url "games" %}' }
 });
+</script>
+<script>
+/* Phones: chat is a bottom sheet opened from the Chat button, so nobody has to scroll to reach it. */
+(function () {
+  var panel = document.getElementById('gm-chat'), fab = document.getElementById('gm-chat-fab'), back = document.getElementById('gm-chat-backdrop'),
+      badge = document.getElementById('gm-chat-badge'), log = document.getElementById('gm-chat-log'), unread = 0, ready = false, isOpen = false;
+  function set(open) {
+    isOpen = open; panel.classList.toggle('open', open); back.hidden = !open; fab.setAttribute('aria-expanded', open ? 'true' : 'false');
+    document.documentElement.classList.toggle('gm-chat-open', open);
+    if (open) { unread = 0; badge.hidden = true; log.scrollTop = log.scrollHeight; } else { document.documentElement.style.removeProperty('--gm-kb'); fab.focus({ preventScroll: true }); }
+  }
+  fab.addEventListener('click', function () { set(true); });
+  document.getElementById('gm-chat-close').addEventListener('click', function () { set(false); });
+  back.addEventListener('click', function () { set(false); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && isOpen) set(false); });
+  setTimeout(function () { ready = true; }, 2500); /* messages already there when the page opens are not "new" */
+  new MutationObserver(function (list) {
+    list.forEach(function (m) { m.addedNodes.forEach(function (n) {
+      if (!ready || isOpen || !n.classList || n.classList.contains('mine')) return;
+      unread += 1; badge.textContent = unread > 9 ? '9+' : unread; badge.hidden = false;
+    }); });
+  }).observe(log, { childList: true });
+  /* keep the sheet above the on-screen keyboard */
+  if (window.visualViewport) {
+    var vv = window.visualViewport;
+    function lift() { if (!isOpen) return; var kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop); document.documentElement.style.setProperty('--gm-kb', kb + 'px'); }
+    vv.addEventListener('resize', lift); vv.addEventListener('scroll', lift);
+  }
+})();
 </script>
 {% endblock %}

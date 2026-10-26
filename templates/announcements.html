@@ -15,20 +15,25 @@
 <p class="text-muted">Official updates, events and rules from the committee.</p>
 
 {% for n in notices %}
-  <article id="notice-{{ n.id }}" class="card-wb p-3 p-md-4 mb-3"
-           style="border-left: 5px solid {% if n.category == 'urgent' %}var(--wb-red){% elif n.category == 'rule' %}var(--wb-amber){% else %}var(--wb-accent){% endif %};">
+  <article id="notice-{{ n.id }}" class="card-wb ntc ntc-{{ n.category }} p-3 p-md-4 mb-3">
     <div class="d-flex align-items-center gap-2 mb-2">
-      <span class="badge rounded-pill {% if n.category == 'urgent' %}text-bg-danger{% elif n.category == 'rule' %}text-bg-warning{% elif n.category == 'event' %}text-bg-primary{% else %}text-bg-secondary{% endif %}">{{ n.get_category_display }}</span>
+      <span class="ntc-tag">{{ n.get_category_display }}</span>
       {% if n.is_pinned %}<span class="small text-muted"><i class="bi bi-pin-angle-fill"></i> Pinned</span>{% endif %}
       <small class="text-muted ms-auto">{{ n.created_at|date:"j M Y" }}</small>
     </div>
-    <h2 class="h5 fw-bold">{{ n.title }}</h2>
-
     {% if n.category == 'event' %}
-      <div class="d-flex flex-wrap gap-3 my-2 small fw-semibold">
-        <span><i class="bi bi-calendar-event me-1"></i>{{ n.event_date|date:"D, j M Y · g:i A" }}</span>
-        {% if n.venue %}<span><i class="bi bi-geo-alt-fill me-1"></i>{{ n.venue }}</span>{% endif %}
+      <div class="d-flex gap-3 align-items-center mb-2">
+        <div class="leaf" aria-hidden="true"><span>{{ n.event_date|date:"M"|upper }}</span><b>{{ n.event_date|date:"j" }}</b></div>
+        <div class="min-w-0">
+          <h2 class="h5 fw-bold mb-1">{{ n.title }}</h2>
+          <div class="d-flex flex-wrap gap-x-3 small fw-semibold text-muted" style="column-gap:1rem">
+            <span><i class="bi bi-clock me-1"></i>{{ n.event_date|date:"D, g:i A" }}</span>
+            {% if n.venue %}<span><i class="bi bi-geo-alt-fill me-1"></i>{{ n.venue }}</span>{% endif %}
+          </div>
+        </div>
       </div>
+    {% else %}
+      <h2 class="h5 fw-bold">{{ n.title }}</h2>
     {% endif %}
 
     <div style="overflow-wrap:anywhere">{{ n.body|urlize|linebreaks }}</div>
@@ -70,7 +75,7 @@
         <details class="small mt-1">
           <summary class="text-muted" role="button">Who's coming</summary>
           <div class="mt-2 d-flex flex-wrap gap-1">
-            {% for r in n.going_list %}<span class="house-chip">{{ r.user.display_name }}{% if r.user.house %} · {{ r.user.house }}{% endif %}</span>{% endfor %}
+            {% for r in n.going_list %}<span class="info-chip">{{ r.user.display_name }}{% if r.user.house %} · {{ r.user.house }}{% endif %}</span>{% endfor %}
           </div>
         </details>
       {% endif %}

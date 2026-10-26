@@ -54,6 +54,12 @@
 
 /* picker modal */
 .pick-list { max-height: 46vh; overflow: auto; border: 1px solid var(--g-line); border-radius: 14px; }
+/* the form sits between .modal-content and its header/body/footer, so give it the flex layout Bootstrap expects:
+   the body scrolls and the Play button stays pinned at the bottom, even on a small phone */
+#pick-form { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; max-height: 100%; }
+#pick-form .modal-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+#pick-form .modal-footer { flex: none; padding-bottom: calc(.75rem + env(safe-area-inset-bottom)); box-shadow: 0 -10px 14px -12px rgba(13, 27, 62, .25); }
+@media (max-height: 780px) { .pick-list { max-height: 30vh; } }
 .pick-item { display: flex; align-items: center; gap: .7rem; padding: .5rem .75rem; cursor: pointer; border-bottom: 1px solid #f0f2f5; margin: 0; }
 .pick-item:last-child { border-bottom: 0; }
 .pick-item:hover { background: #f6f8fb; }
@@ -310,3 +316,27 @@
 .tp-stand .srow small { color: var(--wb-muted); font-weight: 600; }
 .tp-stand .net.up { color: #16864a; font-weight: 800; } .tp-stand .net.down { color: #c42b3d; font-weight: 800; }
 .tp-stand .note { font-size: .76rem; color: var(--wb-muted); padding-top: .4rem; }
+
+/* ---------- chat: a bottom sheet on phones/tablets, a side panel on desktop ---------- */
+.gm-chat-fab, .gm-chat-backdrop, .gm-chat-close { display: none; }
+.gm-chat-head { display: flex; align-items: center; justify-content: space-between; }
+@media (max-width: 991.98px) {
+  .gm { padding-bottom: 64px; }
+  .gm-chat-fab { display: inline-flex; align-items: center; gap: .4rem; position: fixed; right: 14px; bottom: calc(86px + env(safe-area-inset-bottom)); z-index: 40;
+                 height: 46px; padding: 0 1rem 0 .9rem; border: 0; border-radius: 99px; background: var(--wb-accent); color: #fff; font-weight: 700; font-size: .9rem;
+                 box-shadow: 0 10px 22px -8px rgba(24, 119, 242, .7), 0 2px 6px rgba(13, 27, 62, .2); }
+  .gm-chat-fab b { position: absolute; top: -6px; right: -4px; min-width: 20px; height: 20px; padding: 0 .3rem; border-radius: 99px; background: #E5484D; color: #fff; font-size: .7rem; line-height: 20px; text-align: center; box-shadow: 0 0 0 2px #fff; }
+  .gm-chat-fab b[hidden] { display: none; }
+  .gm-chat-open .gm-chat-fab { display: none; }
+  .gm-chat-backdrop { display: block; position: fixed; inset: 0; z-index: 1050; background: rgba(13, 27, 62, .35); }
+  .gm-chat-backdrop[hidden] { display: none; }
+  .gm-side .gm-chat { position: fixed; left: 0; right: 0; bottom: var(--gm-kb, 0px); z-index: 1060; margin: 0; border: 0; border-radius: 22px 22px 0 0;
+                      padding: .8rem .9rem calc(.8rem + env(safe-area-inset-bottom)); max-height: 80dvh; box-shadow: 0 -16px 40px -12px rgba(13, 27, 62, .4);
+                      transform: translateY(105%); visibility: hidden; transition: transform .22s ease, visibility 0s linear .22s; }
+  .gm-side .gm-chat.open { transform: none; visibility: visible; transition: transform .22s ease; }
+  .gm-chat .gm-chat-head h2 { margin: 0 0 .5rem; }
+  .gm-chat-close { display: grid; place-items: center; width: 34px; height: 34px; margin: -4px -4px 0 0; border: 0; border-radius: 50%; background: #eef1f6; color: #4a5260; }
+  .gm-chat .gm-chat-log { height: min(34dvh, 260px); }
+  .gm-chat .gm-chat-log + form input { font-size: 16px; } /* 16px stops iOS zooming into the field */
+}
+@media (prefers-reduced-motion: reduce) { .gm-side .gm-chat, .gm-side .gm-chat.open { transition: none; } }

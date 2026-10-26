@@ -7,8 +7,8 @@
     <div class="av-lg mb-2">{{ resident.avatar_html }}</div>
     <h1 class="h4 fw-bold mb-1">{{ resident.display_name }} {% if profile.is_online %}<span class="online-dot" title="Online"></span>{% endif %}</h1>
     <span class="house-chip">House {{ resident.house }}</span>
-    {% if profile.age %}<span class="house-chip">{{ profile.age }} years</span>{% endif %}
-    {% if profile.gender %}<span class="house-chip">{{ profile.get_gender_display }}</span>{% endif %}
+    {% if profile.age %}<span class="info-chip">{{ profile.age }} years</span>{% endif %}
+    {% if profile.gender %}<span class="info-chip">{{ profile.get_gender_display }}</span>{% endif %}
     {% if profile.pronouns %}<div class="small text-muted mt-2">{{ profile.pronouns }}</div>{% endif %}
     {% if profile.bio %}<p class="mt-3 mb-0" style="white-space:pre-wrap;overflow-wrap:anywhere">{{ profile.bio }}</p>{% endif %}
   </div>

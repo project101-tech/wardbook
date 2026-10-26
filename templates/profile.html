@@ -7,8 +7,8 @@
     <div class="av-lg mb-2">{{ user.avatar_html }}</div>
     <h1 class="h4 fw-bold mb-1">{{ user.display_name }}</h1>
     <span class="house-chip">House {{ user.house }}</span>
-    {% if user.profile.age %}<span class="house-chip">{{ user.profile.age }} years</span>{% endif %}
-    {% if user.profile.gender %}<span class="house-chip">{{ user.profile.get_gender_display }}</span>{% endif %}
+    {% if user.profile.age %}<span class="info-chip">{{ user.profile.age }} years</span>{% endif %}
+    {% if user.profile.gender %}<span class="info-chip">{{ user.profile.get_gender_display }}</span>{% endif %}
     {% if user.profile.pronouns %}<div class="small text-muted mt-2">{{ user.profile.pronouns }}</div>{% endif %}
     <div class="small text-muted mt-2">{{ my_posts }} post{{ my_posts|pluralize }} in the Town Square</div>
   </div>

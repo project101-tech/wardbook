@@ -7,7 +7,7 @@ Verified-resident sign-up, Notices, Town Square, private messaging, communities,
 
 ```bash
 python -m venv .venv
-python -m venv .venv        # Windows: .venv\Scripts\activate
+source .venv/bin/activate         # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py createsuperuser     # this is YOUR admin login

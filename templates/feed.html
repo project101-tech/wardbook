@@ -2,12 +2,19 @@
 {% block title %}Town Square{% endblock %}
 
 {% block content %}
+<section class="greet" aria-label="Welcome">
+  <h1><span id="greet-word">Hello</span>, {{ user.first_name|default:user.username }}</h1>
+  <p>See what your neighbours are up to.</p>
+</section>
+<script>
+  (function () { var h = new Date().getHours(), w = h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : h < 21 ? 'Good evening' : 'Good night'; document.getElementById('greet-word').textContent = w; })();
+</script>
 {% if latest_notice %}
   <a href="{% url 'announcements' %}" class="card-wb d-flex gap-3 align-items-center p-3 mb-3 text-decoration-none"
      style="border-left: 5px solid var(--wb-accent); color: inherit;">
     <i class="bi bi-megaphone-fill fs-4" style="color: var(--wb-accent)"></i>
     <div class="flex-grow-1 min-w-0">
-      <div class="small text-muted fw-semibold text-uppercase" style="letter-spacing:.04em">
+      <div class="small text-muted fw-semibold">
         {% if latest_notice.is_pinned %}Pinned · {% endif %}{{ latest_notice.get_category_display }}
       </div>
       <div class="fw-bold text-truncate">{{ latest_notice.title }}</div>

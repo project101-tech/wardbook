@@ -25,7 +25,7 @@ class User(AbstractUser):
         profile = getattr(self, "profile", None)
         if profile and profile.avatar:
             return format_html('<img class="av" src="{}" alt="">', profile.avatar.url)
-        return format_html('<span class="av">{}</span>', (self.display_name[:1] or "?").upper())
+        return format_html('<span class="av av-{}">{}</span>', (self.pk or 0) % 8, (self.display_name[:1] or "?").upper())
 
 
 class ResidentProfile(models.Model):

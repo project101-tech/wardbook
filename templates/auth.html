@@ -1,15 +1,14 @@
 {% extends "base.html" %}
 {% block title %}{% if mode == "register" %}Join{% else %}Log in{% endif %}{% endblock %}
-{% block mainclass %}pt-4 pt-md-5{% endblock %}
+{% block mainclass %}auth-main{% endblock %}
 
 {% block content %}
-<div class="mx-auto" style="max-width: 440px;">
-  <div class="text-center mb-4">
-    <svg class="mb-3 mx-auto" style="width:72px;height:72px;display:block" aria-hidden="true"><use href="#wb-logo"/></svg>
-    <h1 class="page-title h2 mb-1">Wardbook</h1>
-    <p class="text-muted mb-0">{{ SOCIETY_NAME }}'s private neighbourhood hub</p>
-  </div>
-
+<header class="auth-head">
+  <svg class="auth-logo" aria-hidden="true"><use href="#wb-logo"/></svg>
+  <h1>Wardbook</h1>
+  <p>{{ SOCIETY_NAME }}'s private neighbourhood hub</p>
+</header>
+<div class="auth-card">
   <div class="card-wb p-4">
     {% if mode == "register" %}
       <h2 class="h5 fw-bold mb-1">Join your neighbours</h2>
