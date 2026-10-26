@@ -84,7 +84,7 @@ WBGame.boot({
   setTimeout(function () { ready = true; }, 2500); /* messages already there when the page opens are not "new" */
   new MutationObserver(function (list) {
     list.forEach(function (m) { m.addedNodes.forEach(function (n) {
-      if (!ready || isOpen || !n.classList || n.classList.contains('mine')) return;
+      if (!ready || isOpen || !window.matchMedia('(max-width: 991.98px)').matches || !n.classList || n.classList.contains('mine')) return;
       unread += 1; badge.textContent = unread > 9 ? '9+' : unread; badge.hidden = false;
       var who = n.querySelector('small'), what = n.querySelector('span');
       peek.textContent = ''; var b = document.createElement('b'); b.textContent = who ? who.textContent : 'New message'; peek.appendChild(b);
