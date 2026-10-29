@@ -176,3 +176,7 @@ code { color: var(--wb-night); background: #F1F5FB !important; border-radius: 10
 @media (prefers-reduced-motion: reduce) {
   .wb-leaving-fwd .wb-main > *, .wb-leaving-back .wb-main > *, .wb-enter-fwd .wb-main > *, .wb-enter-back .wb-main > * { animation: none !important; }
 }
+
+/* ---------- phones: typing and long text ---------- */
+@media (max-width: 767.98px) { html.kb-open .wb-tabs { display: none; } }   /* the tab bar steps aside while the keyboard is up */
+.wb-toast span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }   /* a very long message previews as two lines */

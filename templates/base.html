@@ -183,6 +183,15 @@
 {% endif %}
 {% endwith %}
 {% if user.is_authenticated %}
+<script>
+/* While you type on a phone the keyboard takes half the screen, so the tab bar hides until you finish. */
+(function () {
+  var root = document.documentElement;
+  function isText(t) { return t && (t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && /^(text|search|email|url|tel|password|number)$/.test(t.type))); }
+  document.addEventListener('focusin', function (e) { if (isText(e.target)) root.classList.add('kb-open'); });
+  document.addEventListener('focusout', function () { setTimeout(function () { if (!isText(document.activeElement)) root.classList.remove('kb-open'); }, 120); });
+})();
+</script>
 <script type="speculationrules">{"prefetch":[{"where":{"selector_matches":".wb-tab, .wb-toplink, .wb-subtab, .wb-iconlink, .wb-brand"},"eagerness":"moderate"}]}</script>
 <script>
 /* Tap a tab: the bubble flies over and the page slides away at once, so it feels instant even while the next page is still loading. */

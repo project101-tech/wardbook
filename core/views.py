@@ -720,6 +720,7 @@ def bump_group(group_id):
 def as_json(m, me):
     return {
         "id": m.id, "mine": m.sender_id == me.id, "body": m.body, "time": fmt_time(m.created_at),
+        "day": timezone.localtime(m.created_at).date().isoformat(), "clock": fmt_time(m.created_at).split(", ", 1)[1],
         "sender": m.sender.first_name or m.sender.username,
         "image": m.image.url if m.image else "", "document": m.document.url if m.document else "",
         "audio": m.audio.url if m.audio else "",

@@ -3,29 +3,77 @@
 {% block mainclass %}wide{% endblock %}
 
 {% block head %}
+{% if peer or group %}<script>document.documentElement.classList.add('chat-open');</script>{% endif %}
 <style>
-  .chat-box { height: calc(100dvh - 388px); min-height: 300px; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: .4rem; }
-  @media (min-width: 768px) { .chat-box { height: 56vh; } }
-  .bubble { max-width: 82%; padding: .5rem .8rem; border-radius: 18px; }
+  /* ---- the conversation card: header / messages / composer ---- */
+  .chat-shell { display: flex; flex-direction: column; background: #fff; overflow: hidden; }
+  .chat-head { display: flex; align-items: center; gap: .5rem; padding: .55rem .75rem; border-bottom: 1px solid var(--wb-line); background: #fff; flex: none; min-height: 3.6rem; }
+  .ch-back { flex: none; width: 44px; height: 44px; margin-left: -.4rem; display: grid; place-items: center; border-radius: 50%; color: var(--wb-ink); text-decoration: none; font-size: 1.35rem; }
+  .ch-back:active { background: var(--wb-accent-soft); }
+  .ch-person { display: flex; align-items: center; gap: .65rem; min-width: 0; flex: 1 1 auto; color: inherit; text-decoration: none; }
+  .chat-head .av { width: 40px; height: 40px; font-size: 1rem; flex: none; }
+  .ch-id { min-width: 0; display: flex; flex-direction: column; line-height: 1.25; flex: 1 1 auto; }
+  .ch-name { font-weight: 800; font-size: 1.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ch-sub { font-size: .78rem; color: var(--wb-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .online-line { font-size: inherit; }
+  .ch-info { flex: none; width: 44px; height: 44px; margin-right: -.4rem; display: grid; place-items: center; border: 0; background: none; border-radius: 50%; color: var(--wb-muted); font-size: 1.3rem; }
+  #group-info { flex: none; max-height: 45%; overflow-y: auto; }
+
+  .chat-stage { position: relative; flex: 1 1 auto; min-height: 0; height: 56vh; }
+  .chat-box { position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+              padding: .75rem .75rem 1rem; display: flex; flex-direction: column; gap: .3rem; }
+  .bubble { max-width: min(82%, 34rem); padding: .45rem .75rem .3rem; border-radius: 18px; font-size: 1rem; line-height: 1.35; }
   .bubble .txt { white-space: pre-wrap; overflow-wrap: anywhere; }
-  .bubble .who { font-size: .7rem; font-weight: 700; color: var(--wb-accent); margin-bottom: 1px; }
-  .bubble .meta { font-size: .65rem; opacity: .65; text-align: right; margin-top: 1px; }
+  .bubble .who { font-size: .72rem; font-weight: 700; color: var(--wb-accent); margin-bottom: 1px; }
+  .bubble .meta { font-size: .68rem; opacity: .7; text-align: right; margin-top: .1rem; white-space: nowrap; }
   .bubble img.pic { display: block; max-width: 100%; max-height: 300px; border-radius: 12px; margin: .1rem 0 .25rem; cursor: zoom-in; }
   .bubble audio { display: block; width: 230px; max-width: 100%; height: 38px; margin: .15rem 0; }
   .bubble.mine { align-self: flex-end; background: var(--wb-accent); color: #fff; border-bottom-right-radius: 5px; }
   .bubble.theirs { align-self: flex-start; background: #e9edf2; border-bottom-left-radius: 5px; }
+  .bubble.pending { opacity: .6; }
+  .day-sep { align-self: center; font-size: .74rem; font-weight: 700; color: var(--wb-muted); background: rgba(255, 255, 255, .92); border: 1px solid var(--wb-line); border-radius: 99px; padding: .15rem .75rem; margin: .5rem 0 .25rem; }
+  .receipt { align-self: flex-end; font-size: .72rem; color: var(--wb-muted); margin: -.15rem .35rem 0 0; }
+  .receipt.seen { color: var(--wb-accent); font-weight: 600; }
+  .typing-line { position: absolute; left: .75rem; bottom: .55rem; max-width: calc(100% - 1.5rem); padding: .2rem .8rem; border-radius: 99px; background: #fff; border: 1px solid var(--wb-line);
+                 box-shadow: 0 6px 14px -8px rgba(13, 27, 62, .35); color: var(--wb-accent); font-size: .78rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+  .typing-line:empty { display: none; }
+  #err { flex: none; }
+
+  /* ---- composer: roomy text box, one round button that is the mic until you type ---- */
+  .composer { position: relative; flex: none; display: flex; align-items: flex-end; gap: .45rem; padding: .55rem .6rem calc(.55rem + env(safe-area-inset-bottom)); border-top: 1px solid var(--wb-line); background: #fff; }
+  .composer textarea { flex: 1 1 auto; min-width: 0; min-height: 44px; max-height: 7.5rem; resize: none; overflow-y: auto; padding: .65rem 1rem; border: 1px solid var(--wb-line); border-radius: 22px;
+                       background: #F4F7FC; font: inherit; font-size: 1rem; line-height: 1.3; color: var(--wb-ink); }
+  .composer textarea:focus { outline: 0; border-color: var(--wb-accent); background: #fff; box-shadow: 0 0 0 3px rgba(24, 119, 242, .15); }
+  .c-btn { flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; background: none; color: var(--wb-muted); font-size: 1.35rem; }
+  .c-btn.mic { background: var(--wb-accent-soft); color: var(--wb-accent-dark); }
+  .c-btn.send { background: var(--wb-accent); color: #fff; box-shadow: 0 6px 14px -6px rgba(24, 119, 242, .8); }
+  .composer:not(.has-text) #go { display: none; }
+  .composer.has-text #mic { display: none; }
+  .tray { position: absolute; left: .6rem; bottom: calc(100% + .4rem); z-index: 3; display: none; gap: .4rem; padding: .45rem; background: #fff; border: 1px solid var(--wb-line); border-radius: 18px; box-shadow: 0 14px 30px -10px rgba(13, 27, 62, .4); }
+  .composer.tray-open .tray { display: flex; }
+  .tray label { margin: 0; width: 4.6rem; padding: .55rem .2rem; display: flex; flex-direction: column; align-items: center; gap: .2rem; border-radius: 14px; font-size: .78rem; font-weight: 700; color: var(--wb-ink); cursor: pointer; }
+  .tray label i { font-size: 1.5rem; color: var(--wb-accent); }
+  .tray label:active { background: var(--wb-accent-soft); }
+  .rec-bar { display: none; align-items: center; gap: .6rem; padding: .6rem .75rem calc(.6rem + env(safe-area-inset-bottom)); border-top: 1px solid var(--wb-line); background: #fff; flex: none; }
+  .rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--wb-red); animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+
+  /* ---- conversation list ---- */
   .thread { display: flex; gap: .75rem; align-items: center; padding: .7rem 1rem; text-decoration: none; color: inherit; border-bottom: 1px solid var(--wb-line); }
   .thread:hover, .thread.on { background: var(--wb-accent-soft); }
   .thread:last-child { border-bottom: 0; }
-  .rec-bar { display: none; align-items: center; gap: .6rem; }
-  .rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--wb-red); animation: blink 1s infinite; }
-  @keyframes blink { 50% { opacity: .25; } }
   .pick { max-height: 220px; overflow-y: auto; border: 1px solid var(--wb-line); border-radius: 12px; padding: .25rem .75rem; }
-  .bubble.pending { opacity: .6; }
-  .receipt { align-self: flex-end; font-size: .68rem; color: var(--wb-muted); margin: -.15rem .35rem 0 0; }
-  .receipt.seen { color: var(--wb-accent); font-weight: 600; }
-  .typing-line { min-height: 1.25rem; color: var(--wb-accent); font-size: .75rem; font-weight: 600; }
-  .online-line { font-size: .72rem; }
+
+  /* ---- phones: the conversation is the whole screen (like WhatsApp / Instagram): no site bars, only the messages scroll ---- */
+  @media (max-width: 767.98px) {
+    html.chat-open, html.chat-open body { overflow: hidden; overscroll-behavior: none; }
+    html.chat-open .wb-top, html.chat-open .wb-tabs, html.chat-open .wb-subtabs, html.chat-open #wb-push-bar { display: none !important; }
+    html.chat-open .wb-main { padding: 0 !important; max-width: none !important; }
+    html.chat-open .wb-main > * { animation: none !important; }
+    .chat-shell { position: fixed; left: 0; right: 0; top: var(--vvt, 0px); height: var(--vvh, 100dvh); z-index: 40; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+    .chat-stage { height: auto; }
+    html.chat-open #wb-toasts { top: calc(env(safe-area-inset-top) + 8px); bottom: auto; }
+  }
 </style>
 {% endblock %}
 
@@ -66,24 +114,28 @@
   <!-- ============ open chat ============ -->
   <div class="col-md-8 {% if not is_chat %}d-none d-md-block{% endif %}">
     {% if is_chat %}
-      <div class="card-wb overflow-hidden">
-        <div class="d-flex align-items-center gap-2 p-3 border-bottom">
-          <a class="icon-btn d-md-none" href="{% url 'inbox' %}" aria-label="Back"><i class="bi bi-arrow-left fs-5"></i></a>
+      <div class="card-wb chat-shell" id="chat-shell">
+        <header class="chat-head">
+          <a class="ch-back d-md-none" href="{% url 'inbox' %}" aria-label="Back to messages"><i class="bi bi-arrow-left"></i></a>
           {% if group %}
-            {{ group.avatar_html }}
-            <div class="lh-sm flex-grow-1 min-w-0">
-              <div class="fw-bold text-truncate">{{ group.name }}</div>
-              <small class="text-muted">{{ members|length }} member{{ members|length|pluralize }}{% if online_count %} · {{ online_count }} online{% endif %}</small>
+            <div class="ch-person">
+              {{ group.avatar_html }}
+              <div class="ch-id">
+                <span class="ch-name">{{ group.name }}</span>
+                <span class="ch-sub">{{ members|length }} member{{ members|length|pluralize }}{% if online_count %} · {{ online_count }} online{% endif %}</span>
+              </div>
             </div>
-            <button class="icon-btn" type="button" data-bs-toggle="collapse" data-bs-target="#group-info" aria-label="Group info"><i class="bi bi-info-circle fs-5"></i></button>
+            <button class="ch-info" type="button" data-bs-toggle="collapse" data-bs-target="#group-info" aria-label="Group info"><i class="bi bi-info-circle"></i></button>
           {% else %}
-            <a href="{% url 'public_profile' peer.pk %}?next={{ request.get_full_path|urlencode }}" class="text-decoration-none">{{ peer.avatar_html }}</a>
-            <a href="{% url 'public_profile' peer.pk %}?next={{ request.get_full_path|urlencode }}" class="lh-sm text-decoration-none text-reset">
-              <div class="fw-bold">{{ peer.display_name }}</div>
-              <span id="peer-online" class="online-line {% if peer.profile.is_online %}text-success{% else %}text-muted{% endif %}">{% if peer.profile.is_online %}<span class="online-dot"></span> Online{% else %}Offline{% endif %}</span><span class="house-chip">House {{ peer.house }}</span>
+            <a href="{% url 'public_profile' peer.pk %}?next={{ request.get_full_path|urlencode }}" class="ch-person">
+              {{ peer.avatar_html }}
+              <span class="ch-id">
+                <span class="ch-name">{{ peer.display_name }}</span>
+                <span class="ch-sub"><span id="peer-online" class="online-line {% if peer.profile.is_online %}text-success{% else %}text-muted{% endif %}">{% if peer.profile.is_online %}<span class="online-dot"></span> Online{% else %}Offline{% endif %}</span> · House {{ peer.house }}</span>
+              </span>
             </a>
           {% endif %}
-        </div>
+        </header>
 
         {% if group %}
         <div class="collapse border-bottom bg-light" id="group-info">
@@ -115,30 +167,35 @@
         </div>
         {% endif %}
 
-        <div id="chat" class="chat-box" data-api="{{ api }}" data-last="{{ last_id }}" data-group="{% if group %}1{% endif %}">
-          {% for m in chat %}<div class="bubble {% if m.sender_id == user.id %}mine{% else %}theirs{% endif %}" data-id="{{ m.id }}">{% if group and m.sender_id != user.id %}<div class="who">{{ m.sender.first_name|default:m.sender.username }}</div>{% endif %}{% if m.image %}<img class="pic" src="{{ m.image.url }}" alt="Photo" loading="lazy">{% endif %}{% if m.document %}<a href="{{ m.document.url }}" target="_blank" rel="noopener">Open document</a>{% endif %}{% if m.audio %}<audio controls preload="none" src="{{ m.audio.url }}"></audio>{% endif %}{% if m.body %}<div class="txt" data-mentionable>{{ m.body }}</div>{% endif %}<div class="meta">{{ m.created_at|date:"j M, g:i A" }}</div></div>{% endfor %}
+        <div class="chat-stage">
+          <div id="chat" class="chat-box" data-api="{{ api }}" data-last="{{ last_id }}" data-group="{% if group %}1{% endif %}">
+            {% for m in chat %}<div class="bubble {% if m.sender_id == user.id %}mine{% else %}theirs{% endif %}" data-id="{{ m.id }}" data-day="{{ m.created_at|date:'Y-m-d' }}">{% if group and m.sender_id != user.id %}<div class="who">{{ m.sender.first_name|default:m.sender.username }}</div>{% endif %}{% if m.image %}<img class="pic" src="{{ m.image.url }}" alt="Photo" loading="lazy">{% endif %}{% if m.document %}<a href="{{ m.document.url }}" target="_blank" rel="noopener">Open document</a>{% endif %}{% if m.audio %}<audio controls preload="none" src="{{ m.audio.url }}"></audio>{% endif %}{% if m.body %}<div class="txt" data-mentionable>{{ m.body }}</div>{% endif %}<div class="meta">{{ m.created_at|date:"g:i A" }}</div></div>{% endfor %}
+          </div>
+          <div id="typing-line" class="typing-line" aria-live="polite"></div>
         </div>
 
         {{ receipt|json_script:"receipt-data" }}
         <div id="err" class="small text-danger px-3 pb-1" style="display:none"></div>
-        <div id="typing-line" class="typing-line px-3 pb-1"></div>
 
         <!-- recording bar (shown while a voice note is being recorded) -->
-        <div id="rec" class="rec-bar p-3 border-top">
+        <div id="rec" class="rec-bar">
           <span class="rec-dot"></span><span class="fw-semibold small">Recording… <span id="rec-time">0:00</span></span>
           <button type="button" id="rec-cancel" class="icon-btn ms-auto"><i class="bi bi-trash3 me-1"></i>Cancel</button>
           <button type="button" id="rec-send" class="btn btn-wb btn-sm px-3"><i class="bi bi-send-fill me-1"></i>Send</button>
         </div>
 
-        <form id="send" class="d-flex gap-2 align-items-center p-3 border-top" autocomplete="off">
+        <form id="send" class="composer" autocomplete="off">
           {% csrf_token %}
-          <label class="icon-btn mb-0" for="pic" title="Send a photo" role="button"><i class="bi bi-image fs-5"></i></label>
+          <div class="tray" id="tray">
+            <label for="pic" role="button"><i class="bi bi-image"></i>Photo</label>
+            <label for="doc" role="button"><i class="bi bi-file-earmark-text"></i>Document</label>
+          </div>
           <input id="pic" type="file" accept="image/*" class="d-none">
-          <label class="icon-btn mb-0" for="doc" title="Send a document" role="button"><i class="bi bi-paperclip fs-5"></i></label>
           <input id="doc" type="file" class="d-none">
-          <input id="msg" class="form-control"{% if group %} data-mention="group:{{ group.pk }}"{% endif %} maxlength="1000" placeholder="Type a message…">
-          <button type="button" id="mic" class="icon-btn" title="Record a voice note"><i class="bi bi-mic-fill fs-5"></i></button>
-          <button id="go" class="btn btn-wb px-3" aria-label="Send"><i class="bi bi-send-fill"></i></button>
+          <button type="button" id="attach" class="c-btn" aria-label="Attach a photo or document" aria-expanded="false"><i class="bi bi-plus-lg"></i></button>
+          <textarea id="msg" rows="1"{% if group %} data-mention="group:{{ group.pk }}"{% endif %} maxlength="1000" placeholder="Message" aria-label="Message" enterkeyhint="send"></textarea>
+          <button type="button" id="mic" class="c-btn mic" aria-label="Record a voice note"><i class="bi bi-mic-fill"></i></button>
+          <button id="go" type="submit" class="c-btn send" aria-label="Send"><i class="bi bi-send-fill"></i></button>
         </form>
       </div>
     {% else %}
@@ -181,8 +238,56 @@
   var typingTimer = null, typingClear = null, typingOn = false, lastTypingSent = 0, receiptEl = null;
   chat.querySelectorAll('[data-id]').forEach(function (e) { seen[e.dataset.id] = true; });
 
-  function toBottom() { chat.scrollTop = chat.scrollHeight; }
+  var pinned = true;                      // is the reader at the bottom? then new messages / the keyboard keep them there
+  function toBottom() { chat.scrollTop = chat.scrollHeight; pinned = true; }
   function nearBottom() { return chat.scrollHeight - chat.scrollTop - chat.clientHeight < 140; }
+  chat.addEventListener('scroll', function () { pinned = nearBottom(); }, { passive: true });
+
+  // Phones: the chat is exactly as tall as the part of the screen the keyboard leaves free, whatever the phone, browser or text size.
+  var root = document.documentElement, vv = window.visualViewport, phone = window.matchMedia('(max-width: 767.98px)');
+  function fit() {
+    var was = pinned;
+    if (phone.matches) { root.style.setProperty('--vvh', (vv ? vv.height : window.innerHeight) + 'px'); root.style.setProperty('--vvt', (vv ? vv.offsetTop : 0) + 'px'); }
+    else { root.style.removeProperty('--vvh'); root.style.removeProperty('--vvt'); }
+    if (was) toBottom();
+  }
+  if (vv) { vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit); }
+  window.addEventListener('resize', fit); window.addEventListener('orientationchange', fit);
+  fit();
+  if (window.ResizeObserver) new ResizeObserver(function () { if (pinned) toBottom(); }).observe(chat);   // keyboard, a growing text box or a bigger text size: stay at the newest message
+
+  // Day labels between messages ("Today", "Yesterday", "26 Oct")
+  var lastDay = '';
+  function dayLabel(iso) {
+    var p = iso.split('-'), d = new Date(+p[0], +p[1] - 1, +p[2]), t = new Date(); t.setHours(0, 0, 0, 0);
+    var diff = Math.round((t - d) / 864e5);
+    if (diff === 0) return 'Today'; if (diff === 1) return 'Yesterday';
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: d.getFullYear() === t.getFullYear() ? undefined : 'numeric' });
+  }
+  function addDay(node) {
+    var day = node.dataset.day; if (!day || day === lastDay) return;
+    lastDay = day; var sep = document.createElement('div'); sep.className = 'day-sep'; sep.textContent = dayLabel(day); chat.insertBefore(sep, node);
+  }
+  Array.prototype.slice.call(chat.querySelectorAll('.bubble[data-day]')).forEach(addDay);
+
+  // The text box grows as you type (up to a few lines); the round button is the mic until there is something to send.
+  var composer = form, maxH = 0;
+  function grow() {
+    input.style.height = 'auto'; maxH = maxH || parseFloat(getComputedStyle(input).maxHeight) || 120;
+    input.style.height = Math.min(input.scrollHeight + 2, maxH) + 'px';
+    composer.classList.toggle('has-text', !!input.value.trim());
+  }
+  input.addEventListener('input', grow);
+  var coarse = window.matchMedia('(pointer: coarse)').matches;
+  input.addEventListener('keydown', function (e) {                       // computer: Enter sends, Shift+Enter is a new line. Phone: Enter is a new line.
+    if (e.key === 'Enter' && !e.shiftKey && !coarse && !e.isComposing && !e.defaultPrevented) { e.preventDefault(); form.requestSubmit(); }
+  });
+  input.addEventListener('focus', function () { setTimeout(function () { fit(); if (pinned) toBottom(); }, 250); });
+  document.getElementById('go').addEventListener('mousedown', function (e) { e.preventDefault(); });   // tapping Send keeps the keyboard open
+  var attach = document.getElementById('attach');
+  attach.addEventListener('click', function () { var o = composer.classList.toggle('tray-open'); attach.setAttribute('aria-expanded', o ? 'true' : 'false'); });
+  document.addEventListener('click', function (e) { if (!composer.contains(e.target)) { composer.classList.remove('tray-open'); attach.setAttribute('aria-expanded', 'false'); } });
+  grow();
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
   function showErr(t) { errBox.textContent = t || ''; errBox.style.display = t ? 'block' : 'none'; }
 
@@ -219,14 +324,14 @@
   function render(m) {
     if (seen[m.id]) return;
     seen[m.id] = true;
-    var d = el('div', 'bubble ' + (m.mine ? 'mine' : 'theirs')); d.dataset.id = m.id;
+    var d = el('div', 'bubble ' + (m.mine ? 'mine' : 'theirs')); d.dataset.id = m.id; if (m.day) d.dataset.day = m.day;
     if (isGroup && !m.mine) d.appendChild(el('div', 'who', m.sender));
     if (m.image) { var i = el('img', 'pic'); i.src = m.image; i.alt = 'Photo'; d.appendChild(i); }
     if (m.document) { var a = el('a', '', 'Open document'); a.href = m.document; a.target = '_blank'; a.rel = 'noopener'; d.appendChild(a); }
     if (m.audio) { var a = el('audio'); a.controls = true; a.preload = 'none'; a.src = m.audio; d.appendChild(a); }
     if (m.body) { var tx = el('div', 'txt', m.body); tx.setAttribute('data-mentionable', ''); d.appendChild(tx); }
-    d.appendChild(el('div', 'meta', m.time));
-    chat.appendChild(d);
+    d.appendChild(el('div', 'meta', m.clock || m.time));
+    addDay(d); chat.appendChild(d);
   }
 
   chat.addEventListener('click', function (e) { if (e.target.classList.contains('pic')) window.open(e.target.src, '_blank'); });
@@ -273,12 +378,12 @@
     var body = input.value.trim();
     if (!body) return;
     clearTimeout(typingTimer); if (typingOn) setTyping(false);
-    input.value = '';
+    input.value = ''; grow();
     placeReceipt(null);
     var tmp = el('div', 'bubble mine pending'); tmp.appendChild(el('div', 'txt', body)); tmp.appendChild(el('div', 'meta', 'Sending…'));
     chat.appendChild(tmp); toBottom();
     var fd = new FormData(); fd.append('body', body);
-    send(fd, function () { input.value = body; }, tmp);
+    send(fd, function () { input.value = body; grow(); }, tmp);
   });
 
   // typing signal: at most one request every 2.5 s while typing, one more when you stop
@@ -294,7 +399,7 @@
   pic.addEventListener('change', function () {
     var f = pic.files[0]; if (!f) return;
     var fd = new FormData(); fd.append('image', f); fd.append('body', input.value.trim());
-    input.value = ''; pic.value = '';
+    input.value = ''; pic.value = ''; grow(); composer.classList.remove('tray-open');
     send(fd);
   });
 
@@ -302,7 +407,7 @@
   doc.addEventListener('change', function () {
     var f = doc.files[0]; if (!f) return;
     var fd = new FormData(); fd.append('document', f); fd.append('body', input.value.trim());
-    input.value = ''; doc.value = ''; send(fd);
+    input.value = ''; doc.value = ''; grow(); composer.classList.remove('tray-open'); send(fd);
   });
 
   // ---- voice notes ----
