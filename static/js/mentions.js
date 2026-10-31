@@ -89,7 +89,7 @@
       var row = mk('div', 'it' + (i === 0 ? ' on' : '')); row.setAttribute('role', 'option');
       var av;
       if (p.avatar) { av = mk('img', 'av'); av.src = p.avatar; av.alt = ''; } else av = mk('span', 'av', p.initial);
-      var nm = mk('div', 'nm', p.name); if (p.house) nm.appendChild(mk('div', 'hs', 'House ' + p.house));
+      var nm = mk('div', 'nm', p.name); if (p.house) nm.appendChild(mk('div', 'hs', p.unit || ('House ' + p.house)));
       row.appendChild(av); row.appendChild(nm); if (p.online) row.appendChild(mk('span', 'od'));
       row.addEventListener('pointerdown', function (e) { e.preventDefault(); choose(i); });
       row.addEventListener('pointermove', function () { setActive(i); });

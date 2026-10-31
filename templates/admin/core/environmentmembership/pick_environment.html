@@ -1,0 +1,25 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Home</a> &rsaquo; <a href="{% url 'admin:app_list' 'core' %}">Core</a> &rsaquo; Environment memberships</div>{% endblock %}
+{% block content %}
+<div id="content-main">
+  <p>Pick an environment to see its people, approve requests and switch accounts on.</p>
+  <div class="module">
+    <table style="width:100%">
+      <thead><tr><th>Environment</th><th>Members</th><th>Waiting for approval</th><th></th></tr></thead>
+      <tbody>
+      {% for e in environments %}
+        <tr>
+          <th scope="row"><a href="?environment__id__exact={{ e.pk }}">{{ e.name }}</a>{% if not e.is_active %} <small>(switched off)</small>{% endif %}</th>
+          <td>{{ e.members }}</td>
+          <td>{% if e.waiting %}<a href="?environment__id__exact={{ e.pk }}&status__exact=pending"><b>{{ e.waiting }} waiting</b></a>{% else %}-{% endif %}</td>
+          <td><a href="?environment__id__exact={{ e.pk }}">Open &rarr;</a></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4">No environments yet. <a href="{% url 'admin:core_environment_add' %}">Add one</a>.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p><a href="?all=1">Show everyone from every environment in one list</a></p>
+</div>
+{% endblock %}

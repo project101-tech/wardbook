@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}My networks{% endblock %}
+{% block content %}
+<h1 class="page-title h3 mb-1">My networks</h1>
+<p class="text-muted">A network is one private community, like your society or your school. You only see people and posts from networks you are approved in.</p>
+
+{% if waiting %}
+<div class="card-wb p-3 mb-3 env-wait">
+  <div class="fw-bold mb-1"><i class="bi bi-hourglass-split me-1"></i>Waiting for approval</div>
+  <div class="small">You can look around once the admin of one of your networks approves you. You'll get a notification. Meanwhile you can ask to join another network below.</div>
+</div>
+{% endif %}
+
+<div class="card-wb mb-3 overflow-hidden">
+  {% for m in memberships %}
+  <div class="env-row">
+    <span class="env-dot" style="--env: {{ m.environment.color }}"></span>
+    <div class="flex-grow-1 min-w-0">
+      <div class="fw-bold text-truncate">{{ m.environment.name }}</div>
+      <div class="small text-muted">{% if m.status == "approved" %}Approved{% if m.role == "admin" %} · you are an admin{% endif %}{% else %}Waiting for approval · asked {{ m.requested_at|timesince }} ago{% endif %}</div>
+    </div>
+    {% if m.status == "approved" %}<span class="env-state ok"><i class="bi bi-check-circle-fill"></i></span>{% else %}<span class="env-state wait"><i class="bi bi-hourglass-split"></i></span>{% endif %}
+    {% if not m.status == "approved" or not only_one %}
+    <form method="post" action="{% url 'network_leave' m.pk %}" onsubmit="return confirm('{% if m.status == "approved" %}Leave {{ m.environment.name }}?{% else %}Cancel this request?{% endif %}')">
+      {% csrf_token %}<button class="btn btn-sm btn-outline-secondary">{% if m.status == "approved" %}Leave{% else %}Cancel{% endif %}</button>
+    </form>
+    {% endif %}
+  </div>
+  {% empty %}<div class="p-4 text-center text-muted">You are not in any network yet.</div>{% endfor %}
+</div>
+
+<h2 class="h5 fw-bold">Join another network</h2>
+<form method="post" action="{% url 'network_join' %}" class="card-wb p-3 mb-4">
+  {% csrf_token %}
+  {% if joinable %}
+  <div class="env-list mb-3">
+    {% for e in joinable %}<label class="env-opt"><input type="checkbox" name="networks" value="{{ e.pk }}"><span class="env-opt-body"><b>{{ e.name }}</b>{% if e.description %}<small>{{ e.description }}</small>{% endif %}</span></label>{% endfor %}
+  </div>
+  {% endif %}
+  <label class="form-label fw-semibold small" for="jc">Have an invite code?</label>
+  <input id="jc" name="join_code" class="form-control mb-3" maxlength="24" placeholder="For private networks" autocomplete="off">
+  <button class="btn btn-wb">Ask to join</button>
+  <div class="small text-muted mt-2">The network's admin approves each request. Your posts in one network are never shown in another unless you post to both.</div>
+</form>
+
+{% if join_requests %}
+<h2 class="h5 fw-bold">Requests to approve</h2>
+<div class="card-wb overflow-hidden mb-4">
+  {% for r in join_requests %}
+  <div class="env-row">
+    {{ r.user.avatar_html }}
+    <div class="flex-grow-1 min-w-0">
+      <div class="fw-bold text-truncate">{{ r.user.display_name }} {% if r.user.house_label %}<span class="house-chip">{{ r.user.house_label }}</span>{% endif %}</div>
+      <div class="small text-muted">wants to join <b>{{ r.environment.name }}</b> · {{ r.requested_at|timesince }} ago</div>
+    </div>
+    <form method="post" action="{% url 'network_decide' r.pk %}" class="d-flex gap-1">
+      {% csrf_token %}
+      <button name="action" value="approve" class="btn btn-wb btn-sm">Approve</button>
+      <button name="action" value="decline" class="btn btn-outline-secondary btn-sm">Decline</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

@@ -21,6 +21,7 @@ from . import chess_engine as chess
 from . import gamelogic as logic
 from . import teenpatti_engine as tpe
 from .models import GameChallenge, GameChatMessage, GameParticipant, GameSession, Notification
+from .environments import visible_users
 from .views import fmt_time, notify, residents_except
 
 User = get_user_model()
@@ -131,13 +132,13 @@ def games(request):
     wins = finished.filter(winner=me).count()
     total = finished.count()
     draws = finished.filter(winner__isnull=True).count()
-    top = (GameChallenge.objects.filter(status=GameChallenge.Status.FINISHED, winner__isnull=False)
+    top = (GameChallenge.objects.filter(status=GameChallenge.Status.FINISHED, winner__isnull=False, winner__in=visible_users(me).values("pk"))
            .values("winner").annotate(w=Count("id")).order_by("-w")[:5])
     top_people = _names(r["winner"] for r in top)
     leaderboard = [{"name": top_people[r["winner"]].display_name, "wins": r["w"], "me": r["winner"] == me.pk}
                    for r in top if r["winner"] in top_people]
 
-    residents = [{"pk": r.pk, "name": r.display_name, "house": getattr(r, "house", ""), "online": r.profile.is_online,
+    residents = [{"pk": r.pk, "name": r.display_name, "house": r.house_label, "online": r.profile.is_online,
                   "initial": (r.display_name[:1] or "?").upper()} for r in residents_except(me)]
     residents.sort(key=lambda r: (not r["online"], r["name"].lower()))
     return render(request, "games.html", {
@@ -337,7 +338,7 @@ def game_payload(session, user):
         u = users.get(pid)
         if not u:
             continue
-        players.append({"id": pid, "name": u.display_name, "house": getattr(u, "house", ""), "seat": seat,
+        players.append({"id": pid, "name": u.display_name, "house": u.house_label, "seat": seat,
                         "online": u.profile.is_online, "initial": (u.display_name[:1] or "?").upper(),
                         "avatar": _avatar(u), "symbol": state.get("symbols", {}).get(str(pid), "")})
     if ch.game == Game.CHESS:

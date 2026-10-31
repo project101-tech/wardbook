@@ -20,6 +20,12 @@ class User(AbstractUser):
         return profile.house_number if profile else ""
 
     @property
+    def house_label(self):
+        """"House 13" / "Class 8-B": the word depends on the network the person signed up to."""
+        profile = getattr(self, "profile", None)
+        return f"{profile.unit_label or 'House'} {profile.house_number}" if profile and profile.house_number else ""
+
+    @property
     def avatar_html(self):
         """Round avatar: photo if uploaded, else initials. Size is set by CSS."""
         profile = getattr(self, "profile", None)
@@ -36,11 +42,13 @@ class ResidentProfile(models.Model):
         PREFER_NOT_TO_SAY = "prefer_not_to_say", "Prefer not to say"
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
-    house_number = models.CharField(max_length=10, db_index=True)  # not unique: families share a house
+    house_number = models.CharField("House / class", max_length=10, db_index=True)  # not unique: families share a house
+    unit_label = models.CharField(max_length=20, default="House", blank=True, help_text="The word shown before the number: House, Class, Flat ...")
     avatar = models.ImageField(upload_to="avatars/", blank=True)
     bio = models.CharField(max_length=160, blank=True)
     gender = models.CharField(max_length=20, choices=Gender.choices, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
+    show_age = models.BooleanField("Show my age to neighbours", default=True)
     pronouns = models.CharField(max_length=30, blank=True)
     occupation = models.CharField(max_length=80, blank=True)
     hometown = models.CharField(max_length=80, blank=True)
@@ -68,7 +76,74 @@ class ResidentProfile(models.Model):
                                                         (self.date_of_birth.month, self.date_of_birth.day))
 
     def __str__(self):
-        return f"{self.user.display_name} (House {self.house_number})"
+        return f"{self.user.display_name} ({self.unit_label or 'House'} {self.house_number})"
+
+
+# --------------------------------------------------------------------------
+# Environments: separate private networks (a society, a school ...). A person can be in several.
+# --------------------------------------------------------------------------
+ENV_COLORS = ["#1877F2", "#12A150", "#F2A024", "#8B6CF0", "#E5484D", "#0EA5A4", "#D6409F", "#6B7A90"]
+
+
+class Environment(models.Model):
+    name = models.CharField(max_length=60, unique=True, help_text="e.g. Ward 11-A, DPS Noida")
+    slug = models.SlugField(max_length=70, unique=True, blank=True, editable=False)
+    description = models.CharField(max_length=160, blank=True, help_text="One line shown on the sign-up page.")
+    is_active = models.BooleanField(default=True, help_text="Untick to switch this network off for everyone in it.")
+    is_listed = models.BooleanField("Show on sign-up page", default=True,
+                                    help_text="Untick for a hidden network: people can only join with its invite code.")
+    join_code = models.CharField("Invite code", max_length=24, blank=True,
+                                 help_text="Optional. Anyone with the code can ask to join, even if the network is hidden.")
+    auto_approve = models.BooleanField("Approve automatically", default=False,
+                                       help_text="Let people in at once. If there is an invite code, only people who enter it get in at once.")
+    unit_label = models.CharField("Word before the number", max_length=20, default="House",
+                                  help_text="Shown before each person's number: House, Class, Flat ...")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            from django.utils.text import slugify
+            base = slugify(self.name)[:60] or "network"
+            slug, n = base, 2
+            while Environment.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug, n = f"{base}-{n}", n + 1
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+    @property
+    def color(self):
+        return ENV_COLORS[(self.pk or 0) % len(ENV_COLORS)]
+
+
+class EnvironmentMembership(models.Model):
+    class Role(models.TextChoices):
+        MEMBER = "member", "Member"
+        ADMIN = "admin", "Admin"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Waiting for approval"
+        APPROVED = "approved", "Approved"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="env_memberships")
+    environment = models.ForeignKey(Environment, on_delete=models.CASCADE, related_name="memberships")
+    role = models.CharField(max_length=10, choices=Role.choices, default=Role.MEMBER)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    requested_at = models.DateTimeField(auto_now_add=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["user", "environment"], name="one_membership_per_env")]
+        indexes = [models.Index(fields=["environment", "status"]), models.Index(fields=["user", "status"])]
+        ordering = ["environment__name", "status", "user__first_name"]
+
+    def __str__(self):
+        return f"{self.user.display_name} in {self.environment.name} ({self.get_status_display()})"
 
 
 # --------------------------------------------------------------------------
@@ -89,6 +164,8 @@ class Announcement(models.Model):
     event_date = models.DateTimeField(null=True, blank=True, help_text="Only for events. Residents can RSVP until this time.")
     venue = models.CharField(max_length=120, blank=True, help_text="Only for events.")
     author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, editable=False, on_delete=models.SET_NULL)
+    environments = models.ManyToManyField("Environment", related_name="notices", blank=True,
+                                          help_text="Which networks see this notice. Pick at least one.")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -160,6 +237,8 @@ class PaymentRequest(models.Model):
                                      related_name="payment_requests",
                                      help_text="Optional: show this payment on a notice/event, e.g. an event fee.")
     is_open = models.BooleanField(default=True, help_text="Untick to close collection.")
+    environments = models.ManyToManyField("Environment", related_name="payment_requests", blank=True,
+                                          help_text="Which networks are asked to pay. Pick at least one.")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -200,6 +279,7 @@ class Post(models.Model):
     image = models.ImageField(upload_to="posts/", blank=True)
     likes = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="liked_posts", blank=True)
     is_hidden = models.BooleanField(default=False)  # moderation: hide instead of delete
+    environments = models.ManyToManyField("Environment", related_name="posts", blank=True)  # where it is shared
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -257,6 +337,8 @@ class PushSubscription(models.Model):
 
 
 class Community(models.Model):
+    environment = models.ForeignKey("Environment", null=True, on_delete=models.CASCADE, related_name="communities",
+                                    help_text="Only members of this network can see and join it.")
     name = models.CharField(max_length=80)
     description = models.TextField(max_length=500, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="communities_created")
@@ -376,6 +458,11 @@ class ChatGroup(models.Model):
                                    related_name="created_groups")
     members = models.ManyToManyField(settings.AUTH_USER_MODEL, through="GroupMember", related_name="chat_groups")
     created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def env_list(self):
+        """For templates that loop over a list of networks: a community lives in exactly one."""
+        return [self.environment] if self.environment_id else []
 
     def __str__(self):
         return self.name

@@ -1,0 +1,2 @@
+{# small coloured network labels; only shown to people who belong to more than one network #}
+{% if multi_env %}{% for e in tags %}<span class="env-tag" style="--env: {{ e.color }}">{{ e.name }}</span>{% endfor %}{% endif %}

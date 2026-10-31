@@ -10,6 +10,7 @@ from django.urls import reverse
 
 from . import spotify
 from .models import MusicPlaylist, MusicProfile, ResidentProfile
+from .testing import join
 
 User = get_user_model()
 ID1, ID2, ID3 = "37i9dQZF1DXcBWIGoYBM5M", "1A2B3C4D5E6F7G8H9I0J1K", "0123456789abcdefghij01"
@@ -24,6 +25,7 @@ def ok(*a, **k):
 def make(username, first, last, house="1"):
     u = User.objects.create_user(username=username, password="x", first_name=first, last_name=last, is_active=True)
     ResidentProfile.objects.create(user=u, house_number=house)
+    join(u)
     return u
 
 

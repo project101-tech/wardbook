@@ -3,9 +3,10 @@
 
 {% block content %}
 <h1 class="page-title h3 mb-1">Neighbours</h1>
-<p class="text-muted">Verified residents of {{ SOCIETY_NAME }}.</p>
+<p class="text-muted">{% if multi_env %}Verified people in your networks.{% else %}Verified residents of {{ my_envs.0.name|default:SOCIETY_NAME }}.{% endif %}</p>
 
-<form method="get" class="mb-3">
+{% if multi_env %}{% include "_env_filter.html" with param="env" %}{% endif %}
+<form method="get" class="mb-3">{% if current_env %}<input type="hidden" name="env" value="{{ current_env.slug }}">{% endif %}
   <div class="input-group">
     <span class="input-group-text bg-white" style="border-radius:12px 0 0 12px"><i class="bi bi-search"></i></span>
     <input class="form-control" style="border-radius:0 12px 12px 0" name="q" value="{{ q }}" placeholder="Search by name or house number">
@@ -16,7 +17,7 @@
   <div class="card-wb p-3 mb-2 d-flex align-items-center gap-3">
     <a href="{% url 'public_profile' r.pk %}?next={{ request.get_full_path|urlencode }}" class="text-decoration-none">{{ r.avatar_html }}</a>
     <div class="flex-grow-1 min-w-0 lh-sm">
-      <div class="fw-bold"><a href="{% url 'public_profile' r.pk %}?next={{ request.get_full_path|urlencode }}" class="text-decoration-none text-reset">{{ r.display_name }}</a> {% if r.profile.is_online %}<span class="online-dot" title="Online"></span>{% endif %}<span class="house-chip">House {{ r.house }}</span></div>
+      <div class="fw-bold"><a href="{% url 'public_profile' r.pk %}?next={{ request.get_full_path|urlencode }}" class="text-decoration-none text-reset">{{ r.display_name }}</a> {% if r.profile.is_online %}<span class="online-dot" title="Online"></span>{% endif %}<span class="house-chip">{{ r.house_label }}</span>{% include "_env_tags.html" with tags=r.tags %}</div>
       {% if r.profile.bio %}<small class="text-muted">{{ r.profile.bio }}</small>{% endif %}
     </div>
     {% if r.pk != user.pk %}

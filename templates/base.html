@@ -126,7 +126,7 @@
   </script>
   {% block head %}{% endblock %}
 </head>
-<body{% if user.is_authenticated %} data-nid="{{ latest_notification_id|default:0 }}"{% endif %}>
+<body{% if no_network %} class="no-network"{% endif %}{% if user.is_authenticated %} data-nid="{{ latest_notification_id|default:0 }}"{% endif %}>
 <!-- the curvy-W logo, defined once and reused with <use href="#wb-logo"> -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="wb-logo" viewBox="0 0 100 100">
@@ -147,7 +147,7 @@
         {% for h in hubs %}<a class="wb-toplink {% if h.active %}active{% endif %}" href="{% url h.url %}"><i class="bi bi-{% if h.active %}{{ h.on }}{% else %}{{ h.icon }}{% endif %}"></i>{{ h.label }}{% if h.badge %}<span class="wb-badge js-dms {% if not unread_dms %}d-none{% endif %}">{{ unread_dms }}</span>{% endif %}</a>{% endfor %}
       </nav>
       <div class="d-flex align-items-center gap-1">
-        <a class="wb-iconlink {% if here == 'directory' %}active{% endif %}" href="{% url 'directory' %}" title="Neighbours" aria-label="Neighbours"><i class="bi bi-people-fill"></i></a>
+        {% if not no_network %}<a class="wb-iconlink {% if here == 'directory' %}active{% endif %}" href="{% url 'directory' %}" title="Neighbours" aria-label="Neighbours"><i class="bi bi-people-fill"></i></a>{% endif %}
         <a class="wb-iconlink {% if here == 'notifications' %}active{% endif %}" href="{% url 'notifications' %}" title="Notifications" aria-label="Notifications"><i class="bi bi-bell-fill"></i><span class="wb-badge js-notifs {% if not unread_notifications %}d-none{% endif %}">{{ unread_notifications }}</span></a>
         {% if user.is_staff %}<a class="wb-iconlink" href="/admin/" title="Control room" aria-label="Control room"><i class="bi bi-gear-fill"></i></a>{% endif %}
         <a class="wb-iconlink wb-me {% if here == 'profile' %}active{% endif %}" href="{% url 'profile' %}" title="My profile" aria-label="My profile">{{ user.avatar_html }}</a>

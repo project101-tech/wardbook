@@ -15,6 +15,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from .environments import my_env_ids, users_in_envs, visible_announcements, visible_users
 from .models import Announcement, AnnouncementResponse, ChatGroup, Community, EventPoke, GroupMember, Notification
 
 User = get_user_model()
@@ -29,9 +30,11 @@ def _full_name(u):
     return f"{u.first_name} {u.last_name}".strip()
 
 
-def _residents():
-    """Everyone who can be mentioned: (user, full name, house, name_is_shared). Phone numbers are never used."""
-    users = list(User.objects.filter(is_active=True, profile__isnull=False).select_related("profile"))
+def _residents(viewer=None):
+    """Everyone who can be mentioned: (user, full name, house, name_is_shared). Phone numbers are never used.
+    With a `viewer`, only people in a network they are in."""
+    base = visible_users(viewer) if viewer is not None else User.objects.filter(is_active=True, profile__isnull=False)
+    users = list(base.select_related("profile"))
     names = [_full_name(u) for u in users]
     out = []
     for u, name in zip(users, names):
@@ -46,7 +49,7 @@ def label_for(name, house, shared):
     return f"{name} ({house})" if shared and house else name
 
 
-def resolve_mentions(text, only_user_ids=None):
+def resolve_mentions(text, only_user_ids=None, viewer=None):
     """Users tagged in `text` with @Full Name (or @Full Name (house) when two neighbours share a name)."""
     if not text or "@" not in text:
         return []
@@ -54,7 +57,7 @@ def resolve_mentions(text, only_user_ids=None):
     chars = list(low)
     found = []
     entries = []
-    for u, name, house, shared in _residents():
+    for u, name, house, shared in _residents(viewer):
         if only_user_ids is not None and u.pk not in only_user_ids:
             continue
         if shared and not house:
@@ -101,7 +104,7 @@ def mention_search(request):
     if allowed is False:
         return JsonResponse({"people": []})
     rows = []
-    for u, name, house, shared in _residents():
+    for u, name, house, shared in _residents(request.user):
         if u.pk == request.user.pk or (allowed is not None and u.pk not in allowed):
             continue
         hay = f"{name} {house}".lower()
@@ -114,7 +117,7 @@ def mention_search(request):
         except Exception:
             avatar = ""
         rows.append((0 if starts else 1, name.lower(), {
-            "id": u.pk, "name": name, "house": house, "label": label_for(name, house, shared),
+            "id": u.pk, "name": name, "house": house, "unit": u.house_label, "label": label_for(name, house, shared),
             "initial": (name[:1] or "?").upper(), "avatar": avatar, "online": prof.is_online}))
     rows.sort(key=lambda r: (r[0], r[1]))
     return JsonResponse({"people": [r[2] for r in rows[:8]]})
@@ -125,10 +128,11 @@ def mention_names(request):
     """Every taggable name, so the page can highlight @mentions in posts and chats."""
     def build():
         labels = []
-        for _u, name, house, shared in _residents():
+        for _u, name, house, shared in _residents(request.user):
             labels.append(label_for(name, house, shared))
         return labels
-    return JsonResponse({"names": cache.get_or_set("mention-names", build, 60), "me": _full_name(request.user)})
+    key = "mention-names-" + ",".join(str(i) for i in sorted(my_env_ids(request.user)))     # one list per set of networks
+    return JsonResponse({"names": cache.get_or_set(key, build, 60), "me": _full_name(request.user)})
 
 
 # --------------------------------------------------------------------------
@@ -136,7 +140,7 @@ def mention_names(request):
 # --------------------------------------------------------------------------
 def _poke_event_or_error(user, pk):
     """(announcement, error). Only someone who is going to an upcoming event can poke."""
-    n = get_object_or_404(Announcement, pk=pk, category=Announcement.Category.EVENT)
+    n = get_object_or_404(visible_announcements(user), pk=pk, category=Announcement.Category.EVENT)
     if not n.is_upcoming:
         return n, "This event has already started."
     mine = AnnouncementResponse.objects.filter(announcement=n, user=user).first()
@@ -152,8 +156,8 @@ def poke_candidates(request, pk):
         return JsonResponse({"error": error}, status=403)
     q = request.GET.get("q", "").strip()[:40]
     answered = AnnouncementResponse.objects.filter(announcement=n).values_list("user_id", flat=True)
-    people = (User.objects.filter(is_active=True, profile__isnull=False).exclude(pk=request.user.pk)
-              .exclude(pk__in=answered).select_related("profile").order_by("first_name", "last_name"))
+    people = (users_in_envs(n.environments.values_list("pk", flat=True)).filter(pk__in=visible_users(request.user).values("pk"))
+              .exclude(pk=request.user.pk).exclude(pk__in=answered).select_related("profile").order_by("first_name", "last_name"))
     if q:
         people = people.filter(Q(first_name__icontains=q) | Q(last_name__icontains=q) | Q(profile__house_number__icontains=q))
     recent = set(EventPoke.objects.filter(announcement=n, sender=request.user, poked_at__gte=timezone.now() - POKE_COOLDOWN)
@@ -162,7 +166,7 @@ def poke_candidates(request, pk):
     for u in people[:40]:
         if not _full_name(u):
             continue
-        rows.append({"id": u.pk, "name": _full_name(u), "house": u.profile.house_number or "", "poked": u.pk in recent})
+        rows.append({"id": u.pk, "name": _full_name(u), "house": u.profile.house_number or "", "unit": u.house_label, "poked": u.pk in recent})
     return JsonResponse({"people": rows, "total": people.count()})
 
 
@@ -174,7 +178,8 @@ def poke(request, pk):
     if error:
         return JsonResponse({"error": error}, status=403)
     tid = request.POST.get("target", "")
-    target = User.objects.filter(pk=int(tid), is_active=True, profile__isnull=False).first() if tid.isdigit() else None
+    target = (users_in_envs(n.environments.values_list("pk", flat=True)).filter(pk=int(tid), pk__in=visible_users(request.user).values("pk")).first()
+              if tid.isdigit() else None)
     if not target or target.pk == request.user.pk:
         return JsonResponse({"error": "Pick a neighbour to poke."}, status=400)
     if AnnouncementResponse.objects.filter(announcement=n, user=target).exists():

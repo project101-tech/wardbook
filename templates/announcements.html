@@ -19,6 +19,7 @@
     <div class="d-flex align-items-center gap-2 mb-2">
       <span class="ntc-tag">{{ n.get_category_display }}</span>
       {% if n.is_pinned %}<span class="small text-muted"><i class="bi bi-pin-angle-fill"></i> Pinned</span>{% endif %}
+      {% include "_env_tags.html" with tags=n.tags %}
       <small class="text-muted ms-auto">{{ n.created_at|date:"j M Y" }}</small>
     </div>
     {% if n.category == 'event' %}
@@ -115,7 +116,7 @@
           list.replaceChildren();
           j.people.forEach(function (p) {
             var row = el('div', 'poke-row'), name = el('div', 'nm', p.name);
-            if (p.house) name.appendChild(el('span', 'hs', 'House ' + p.house));
+            if (p.house) name.appendChild(el('span', 'hs', p.unit || ('House ' + p.house)));
             var b = el('button', 'btn btn-soft btn-sm', p.poked ? 'Poked \u2713' : 'Poke'); b.type = 'button'; b.disabled = p.poked;
             b.onclick = function () {
               b.disabled = true;

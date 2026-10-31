@@ -131,7 +131,7 @@
               {{ peer.avatar_html }}
               <span class="ch-id">
                 <span class="ch-name">{{ peer.display_name }}</span>
-                <span class="ch-sub"><span id="peer-online" class="online-line {% if peer.profile.is_online %}text-success{% else %}text-muted{% endif %}">{% if peer.profile.is_online %}<span class="online-dot"></span> Online{% else %}Offline{% endif %}</span> · House {{ peer.house }}</span>
+                <span class="ch-sub"><span id="peer-online" class="online-line {% if peer.profile.is_online %}text-success{% else %}text-muted{% endif %}">{% if peer.profile.is_online %}<span class="online-dot"></span> Online{% else %}Offline{% endif %}</span> · {{ peer.house_label }}</span>
               </span>
             </a>
           {% endif %}

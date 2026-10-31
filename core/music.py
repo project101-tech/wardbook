@@ -25,6 +25,7 @@ from . import spotify
 from .models import MusicPlaylist, MusicProfile
 
 User = get_user_model()
+from .environments import visible_users  # noqa: E402
 PAGE = 24
 
 
@@ -37,8 +38,9 @@ def _sandbox():
     return "" if v.strip() == "-" else v
 
 
-def _residents():
-    return User.objects.filter(is_active=True, profile__isnull=False)
+def _residents(viewer):
+    """Neighbours the viewer may see (people in a network they are in)."""
+    return visible_users(viewer)
 
 
 def _shared_playlists(user):
@@ -55,7 +57,7 @@ def _shared_playlists(user):
 @login_required
 def music_home(request):
     q = request.GET.get("q", "").strip()[:60]
-    people = (_residents().filter(music_profile__is_shared=True).exclude(pk=request.user.pk).select_related("profile")
+    people = (_residents(request.user).filter(music_profile__is_shared=True).exclude(pk=request.user.pk).select_related("profile")
               .annotate(shared_count=Count("music_playlists", filter=Q(music_playlists__is_visible=True)))
               .filter(shared_count__gt=0))
     for term in q.split():
@@ -83,7 +85,7 @@ def music_home(request):
 # --------------------------------------------------------------------------
 @login_required
 def music_profile(request, user_id):
-    resident = get_object_or_404(_residents().select_related("profile"), pk=user_id)
+    resident = get_object_or_404(_residents(request.user).select_related("profile"), pk=user_id)
     mp, playlists = _shared_playlists(resident)
     playlists = list(playlists)
     is_me = resident.pk == request.user.pk

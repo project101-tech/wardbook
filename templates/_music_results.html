@@ -9,7 +9,7 @@
           <span class="av-sm">{{ r.avatar_html }}</span>
           <div class="flex-grow-1" style="min-width:0">
             <div class="nm">{{ r.display_name }} {% if r.profile.is_online %}<span class="online-dot" title="Online"></span>{% endif %}</div>
-            <div class="mp-count"><span class="house-chip">House {{ r.house }}</span> · {{ r.shared_count }} playlist{{ r.shared_count|pluralize }}</div>
+            <div class="mp-count"><span class="house-chip">{{ r.house_label }}</span> · {{ r.shared_count }} playlist{{ r.shared_count|pluralize }}</div>
           </div>
           <span class="btn btn-soft btn-sm">Listen</span>
         </div>

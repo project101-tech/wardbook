@@ -1,0 +1,5 @@
+{# "All | Ward 11-A | DPS Noida" filter row; picks ?env=<slug>, keeps the search text #}
+<div class="env-filter" role="group" aria-label="Show">
+  <a class="env-chip {% if not current_env %}on{% endif %}" href="?{% if q %}q={{ q|urlencode }}{% endif %}">All</a>
+  {% for e in my_envs %}<a class="env-chip {% if current_env and current_env.pk == e.pk %}on{% endif %}" style="--env: {{ e.color }}" href="?env={{ e.slug }}{% if q %}&q={{ q|urlencode }}{% endif %}">{{ e.name }}</a>{% endfor %}
+</div>

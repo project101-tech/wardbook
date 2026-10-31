@@ -125,7 +125,7 @@
           <label class="pick-item" data-name="{{ r.name|lower }}">
             <input type="checkbox" name="opponents" value="{{ r.pk }}">
             <span class="gav">{{ r.initial }}<span class="od {% if r.online %}on{% endif %}"></span></span>
-            <span><span class="nm d-block">{{ r.name }}</span><span class="hs">{% if r.house %}House {{ r.house }}{% endif %}{% if r.online %} · online now{% endif %}</span></span>
+            <span><span class="nm d-block">{{ r.name }}</span><span class="hs">{{ r.house }}{% if r.online %} · online now{% endif %}</span></span>
             <span class="chk"><i class="bi bi-check-lg"></i></span>
           </label>
           {% empty %}<div class="p-3 text-muted small">No other neighbours have joined yet.</div>{% endfor %}

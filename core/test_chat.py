@@ -4,6 +4,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from .models import ChatGroup, GroupMember, Message, ResidentProfile
+from .testing import join
 
 User = get_user_model()
 
@@ -15,6 +16,7 @@ class ChatScreenTests(TestCase):
         cls.other = User.objects.create_user(username="9200000002", password="x", first_name="Raj", last_name="P", is_active=True)
         for u in (cls.me, cls.other):
             ResidentProfile.objects.get_or_create(user=u)
+            join(u)
         Message.objects.create(sender=cls.other, recipient=cls.me, body="hello there")
 
     def setUp(self):

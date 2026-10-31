@@ -23,9 +23,9 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
-from . import live, push
+from . import environments as envs, live, push
 from .navigation import nav_context
-from .models import (Announcement, AnnouncementResponse, ChatGroup, Comment, Community, CommunityEvent, EventPoke,
+from .models import (Environment, EnvironmentMembership, Announcement, AnnouncementResponse, ChatGroup, Comment, Community, CommunityEvent, EventPoke,
                      CommunityMember, CommunityPost, GameChallenge, GameChatMessage, GameParticipant, GameSession, GroupMember, Message, Notification, Payment, PaymentRequest, Post,
                      TypingIndicator,
                      PushSubscription, ResidentProfile)
@@ -58,6 +58,10 @@ def nav(request):
         ctx["unread_notifications"] = Notification.objects.filter(recipient=request.user, is_read=False).count()
         ctx["latest_notification_id"] = Notification.objects.filter(recipient=request.user).aggregate(m=Max("id"))["m"] or 0
         ctx.update(nav_context(request.resolver_match.url_name if request.resolver_match else ""))
+        mine = envs.my_envs(request.user)
+        ctx["my_envs"] = mine
+        ctx["multi_env"] = len(mine) > 1
+        ctx["no_network"] = not mine
     return ctx
 
 
@@ -74,7 +78,7 @@ def notify(user, title, body="", url="", kind=Notification.Kind.SYSTEM, actor=No
 def notify_mentions(text, actor, url, title="You were mentioned", only_user_ids=None):
     """Notify everyone tagged with @Name. `only_user_ids` limits it to the people who can see the place (a group, a community)."""
     from .social import resolve_mentions
-    for user in resolve_mentions(text, only_user_ids):
+    for user in resolve_mentions(text, only_user_ids, viewer=actor):
         notify(user, title, f"{actor.display_name} mentioned you.", url, Notification.Kind.MENTION, actor)
 
 
@@ -122,7 +126,12 @@ class WardLoginForm(AuthenticationForm):
 
 class RegisterForm(forms.Form):
     full_name = forms.CharField(max_length=60, widget=forms.TextInput(attrs={"placeholder": "e.g. Ramesh Sharma"}))
-    house_number = forms.CharField(max_length=10, widget=forms.TextInput(attrs={"placeholder": "e.g. A-42"}))
+    house_number = forms.CharField(label="House number or class", max_length=10, widget=forms.TextInput(attrs={"placeholder": "e.g. A-42 or 8-B"}))
+    networks = forms.ModelMultipleChoiceField(
+        label="Your network(s)", required=False, queryset=Environment.objects.none(), widget=forms.CheckboxSelectMultiple,
+        help_text="Pick every place you belong to. Each one is approved separately.")
+    join_code = forms.CharField(label="Invite code (if you were given one)", required=False, max_length=24,
+                                widget=forms.TextInput(attrs={"placeholder": "Optional", "autocomplete": "off"}))
     mobile = forms.CharField(
         label="Mobile number", max_length=10,
         widget=forms.TextInput(attrs={"inputmode": "numeric", "placeholder": "10-digit number (your login ID)"}),
@@ -132,7 +141,11 @@ class RegisterForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["networks"].queryset = Environment.objects.filter(is_active=True, is_listed=True)
+        self.fields["networks"].widget.attrs["class"] = "env-pick"
         style(self)
+        self.fields["networks"].widget.attrs["class"] = "env-pick"
+        self.chosen = []
 
     def clean_full_name(self):
         return " ".join(self.cleaned_data["full_name"].split())
@@ -150,6 +163,17 @@ class RegisterForm(forms.Form):
 
     def clean(self):
         data = super().clean()
+        chosen = list(data.get("networks") or [])
+        code = (data.get("join_code") or "").strip()
+        if code:
+            hidden = envs.find_by_code(code)
+            if not hidden:
+                self.add_error("join_code", "That invite code isn't right. Check it with whoever gave it to you.")
+            elif hidden not in chosen:
+                chosen.append(hidden)
+        if not chosen and not self.errors.get("join_code"):
+            self.add_error("networks", "Pick at least one network, or enter an invite code.")
+        self.chosen = chosen
         p1, p2 = data.get("password1"), data.get("password2")
         if p1 and p2:
             if p1 != p2:
@@ -163,6 +187,9 @@ class RegisterForm(forms.Form):
 
 
 class PostForm(forms.ModelForm):
+    environments = forms.ModelMultipleChoiceField(
+        label="Share with", required=False, queryset=Environment.objects.none(), widget=forms.CheckboxSelectMultiple)
+
     class Meta:
         model = Post
         fields = ["body", "image"]
@@ -171,6 +198,11 @@ class PostForm(forms.ModelForm):
                                           "class": "form-control", "data-mention": "all"}),
             "image": forms.FileInput(attrs={"accept": "image/*", "class": "d-none", "id": "post-image"}),
         }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.mine = envs.my_envs(user) if user is not None else []
+        self.fields["environments"].queryset = Environment.objects.filter(pk__in=[e.pk for e in self.mine])
 
     def clean_image(self):
         return check_image(self.cleaned_data.get("image"))
@@ -181,6 +213,14 @@ class PostForm(forms.ModelForm):
             raise ValidationError("Write something first.")
         return body
 
+    def clean_environments(self):
+        chosen = list(self.cleaned_data.get("environments") or [])
+        if not chosen and len(self.mine) == 1:
+            chosen = list(self.mine)                    # only one network: nothing to choose
+        if not chosen:
+            raise ValidationError("Choose where to post: tick at least one of your networks.")
+        return chosen
+
 
 class ProfileForm(forms.ModelForm):
     first_name = forms.CharField(max_length=60)
@@ -188,7 +228,7 @@ class ProfileForm(forms.ModelForm):
 
     class Meta:
         model = ResidentProfile
-        fields = ["bio", "gender", "date_of_birth", "pronouns", "occupation", "hometown", "interests", "avatar"]
+        fields = ["bio", "gender", "date_of_birth", "show_age", "pronouns", "occupation", "hometown", "interests", "avatar"]
         widgets = {
             "avatar": forms.FileInput(attrs={"accept": "image/*"}),
             "bio": forms.TextInput(attrs={"placeholder": "A line about you (optional)"}),
@@ -204,7 +244,9 @@ class ProfileForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["first_name"].initial = user.first_name
         self.fields["last_name"].initial = user.last_name
-        self.order_fields(["first_name", "last_name", "bio", "gender", "date_of_birth", "pronouns",
+        self.fields["date_of_birth"].label = "Date of birth"
+        self.fields["date_of_birth"].help_text = "We show your age (like “24 years”), never the date itself."
+        self.order_fields(["first_name", "last_name", "bio", "gender", "date_of_birth", "show_age", "pronouns",
                            "occupation", "hometown", "interests", "avatar"])
         style(self)
 
@@ -301,8 +343,26 @@ def fmt_time(dt):
     return f"{dt.day} {dt:%b}, {dt.hour % 12 or 12}:{dt:%M} {dt:%p}"
 
 
-def resident_or_404(user_id):
-    return get_object_or_404(User, pk=user_id, is_active=True, profile__isnull=False)
+def resident_or_404(user_id, viewer=None):
+    """A resident the viewer is allowed to see (shares a network with them). Without a viewer: any active resident."""
+    base = envs.visible_users(viewer) if viewer is not None else User.objects.filter(is_active=True, profile__isnull=False)
+    return get_object_or_404(base, pk=user_id)
+
+
+def notify_env_admins(env, title, body, actor):
+    """Tell the people who can approve requests for this network (its admins; staff if it has none)."""
+    ids = list(EnvironmentMembership.objects.filter(environment=env, role=EnvironmentMembership.Role.ADMIN,
+                                                    status=EnvironmentMembership.Status.APPROVED).values_list("user_id", flat=True))
+    if not ids:
+        ids = list(User.objects.filter(is_staff=True, is_active=True).values_list("pk", flat=True))
+    for u in User.objects.filter(pk__in=ids):
+        notify(u, title, body, reverse("networks"), Notification.Kind.SYSTEM, actor)
+
+
+def env_filter(request):
+    """The network picked with ?env=<slug> (must be one of mine), or None for 'all my networks'."""
+    slug = request.GET.get("env", "")
+    return next((e for e in envs.my_envs(request.user) if e.slug == slug), None) if slug else None
 
 
 # --------------------------------------------------------------------------
@@ -319,12 +379,19 @@ def register(request):
             user = User(username=d["mobile"], first_name=first, last_name=last, is_active=False)
             user.set_password(d["password1"])
             user.save()
-            ResidentProfile.objects.create(user=user, house_number=d["house_number"])
-        messages.success(
-            request,
-            "Registration received! The committee will verify your house and activate your account. "
-            "Then you can log in here.",
-        )
+            ResidentProfile.objects.create(user=user, house_number=d["house_number"],
+                                           unit_label=(form.chosen[0].unit_label or "House") if form.chosen else "House")
+            results = [(env, envs.request_join(user, env, d.get("join_code", ""))[0]) for env in form.chosen]
+        for env, em in results:
+            if em.status != EnvironmentMembership.Status.APPROVED:
+                notify_env_admins(env, f"{user.display_name} wants to join {env.name}",
+                                  f"{user.profile.unit_label} {user.profile.house_number}. Open Networks to approve.", user)
+        if user.is_active:
+            messages.success(request, "You're in! Log in with your mobile number and password.")
+        else:
+            names = " and ".join(env.name for env, _ in results)
+            messages.success(request, f"Registration received! The admin of {names} will verify you and activate your account. "
+                                      "Then you can log in here.")
         return redirect("login")
     return render(request, "auth.html", {"form": form, "mode": "register"})
 
@@ -335,31 +402,40 @@ def register(request):
 @login_required
 def feed(request):
     if request.method == "POST":
-        form = PostForm(request.POST, request.FILES)
+        form = PostForm(request.POST, request.FILES, user=request.user)
         if form.is_valid():
             post = form.save(commit=False)
             post.author = request.user
             post.save()
-            notify_mentions(post.body, request.user, reverse("feed") + f"#post-{post.pk}", "You were mentioned on Town Square")
-            messages.success(request, "Posted to the Town Square.")
+            post.environments.set(form.cleaned_data["environments"])
+            notify_mentions(post.body, request.user, reverse("feed") + f"#post-{post.pk}", "You were mentioned on Town Square",
+                            envs.audience_ids(form.cleaned_data["environments"]))
+            where = ", ".join(e.name for e in form.cleaned_data["environments"]) if len(envs.my_envs(request.user)) > 1 else "the Town Square"
+            messages.success(request, f"Posted to {where}.")
             return redirect("feed")
     else:
-        form = PostForm()
+        form = PostForm(user=request.user)
 
-    page = Paginator(feed_posts(request.user), 10).get_page(request.GET.get("page"))
+    current = env_filter(request)
+    page = Paginator(feed_posts(request.user, current), 10).get_page(request.GET.get("page"))
     return render(request, "feed.html", {
         "form": form,
         "page": page,
         "next_url": request.get_full_path(),
-        "latest_notice": Announcement.objects.first(),  # pinned first, then newest
+        "latest_notice": envs.visible_announcements(request.user).first(),  # pinned first, then newest
+        "current_env": current,
+        "picked": set(request.POST.getlist("environments")) if request.method == "POST" else ({str(current.pk)} if current else set()),
     })
 
 
-def feed_posts(user):
+def feed_posts(user, env=None):
+    posts = envs.visible_posts(user)
+    if env is not None:
+        posts = posts.filter(environments=env)
     return (
-        Post.objects.filter(is_hidden=False)
+        posts.filter(is_hidden=False)
         .select_related("author__profile")
-        .prefetch_related(
+        .prefetch_related("environments",
             Prefetch("comments", queryset=Comment.objects.filter(is_hidden=False).select_related("author__profile"))
         )
         .annotate(
@@ -382,7 +458,7 @@ def feed_live(request):
     def html(post):
         return render_to_string("_post.html", {"post": post, "next_url": nxt}, request=request)
 
-    posts = feed_posts(request.user)
+    posts = feed_posts(request.user, env_filter(request))
     out = {"new": [], "upd": [], "gone": []}
     after = request.GET.get("after", "")
     if after.isdigit():
@@ -406,7 +482,7 @@ def feed_live(request):
 @login_required
 @require_POST
 def like(request, pk):
-    post = get_object_or_404(Post, pk=pk, is_hidden=False)
+    post = get_object_or_404(envs.visible_posts(request.user), pk=pk, is_hidden=False)
     if post.likes.filter(pk=request.user.pk).exists():
         post.likes.remove(request.user)
     else:
@@ -417,14 +493,14 @@ def like(request, pk):
 @login_required
 @require_POST
 def comment(request, pk):
-    post = get_object_or_404(Post, pk=pk, is_hidden=False)
+    post = get_object_or_404(envs.visible_posts(request.user), pk=pk, is_hidden=False)
     body = request.POST.get("body", "").strip()[:500]
     if body:
         Comment.objects.create(post=post, author=request.user, body=body)
         if post.author_id != request.user.id:
             notify(post.author, f"{request.user.display_name} commented on your post", body[:120],
                    reverse("feed") + f"#post-{pk}", Notification.Kind.TOWN_SQUARE, request.user)
-        notify_mentions(body, request.user, reverse("feed") + f"#post-{pk}")
+        notify_mentions(body, request.user, reverse("feed") + f"#post-{pk}", only_user_ids=envs.audience_ids(post.environments.all()))
     return back(request, f"post-{pk}")
 
 
@@ -445,7 +521,7 @@ def delete_post(request, pk):
 def announcements(request):
     A = AnnouncementResponse.Answer
     notices = list(
-        Announcement.objects.annotate(
+        envs.visible_announcements(request.user).annotate(
             n_going=Count("responses", filter=Q(responses__answer=A.GOING)),
             n_no=Count("responses", filter=Q(responses__answer=A.NOT_GOING)),
             n_ack=Count("responses", filter=Q(responses__answer=A.ACK)),
@@ -454,6 +530,7 @@ def announcements(request):
             Prefetch("responses", to_attr="going_list",
                      queryset=AnnouncementResponse.objects.filter(answer=A.GOING).select_related("user__profile")),
             Prefetch("payment_requests", queryset=PaymentRequest.objects.filter(is_open=True)),
+            "environments",
         )
         .order_by("-is_pinned", "-created_at")
     )
@@ -465,6 +542,7 @@ def announcements(request):
         n.my = mine.get(n.id)  # what I answered, or None
         n.pokers = [] if n.my else pokers.get(n.id, [])             # neighbours who poked me and are still waiting for my answer
         n.can_poke = n.category == Announcement.Category.EVENT and n.is_upcoming and n.my == A.GOING
+        n.tags = envs.only_mine(n.environments.all(), request.user)
     return render(request, "announcements.html", {"notices": notices})
 
 
@@ -473,7 +551,7 @@ def announcements(request):
 def respond(request, pk):
     """Event RSVP (going / can't make it) or rule acknowledgement. Pressing the same button again reverts it."""
     A = AnnouncementResponse.Answer
-    n = get_object_or_404(Announcement, pk=pk)
+    n = get_object_or_404(envs.visible_announcements(request.user), pk=pk)
     allowed = {Announcement.Category.EVENT: {A.GOING, A.NOT_GOING}, Announcement.Category.RULE: {A.ACK}}.get(n.category, set())
     answer = request.POST.get("answer")
     if answer not in allowed:
@@ -498,18 +576,20 @@ def payments(request):
     by_request = {}
     for p in mine:
         by_request.setdefault(p.request_id, []).append(p)
-    collections = list(PaymentRequest.objects.filter(is_open=True).select_related("announcement"))
+    collections = list(envs.visible_payment_requests(request.user).filter(is_open=True).select_related("announcement")
+                       .prefetch_related("environments"))
     for c in collections:
         c.mine = by_request.get(c.id, [])
         c.settled = c.amount is not None and any(p.status == Payment.Status.APPROVED for p in c.mine)
         c.awaiting = any(p.status == Payment.Status.PENDING for p in c.mine)
+        c.tags = envs.only_mine(c.environments.all(), request.user)
     return render(request, "payments.html", {"collections": collections, "history": mine})
 
 
 @login_required
 @require_POST
 def pay(request, pk):
-    pr = get_object_or_404(PaymentRequest, pk=pk, is_open=True)
+    pr = get_object_or_404(envs.visible_payment_requests(request.user), pk=pk, is_open=True)
     if pr.amount is not None and Payment.objects.filter(
             request=pr, payer=request.user, status=Payment.Status.APPROVED).exists():
         messages.info(request, "You've already paid this one. Thank you!")
@@ -534,16 +614,24 @@ def pay(request, pk):
 @login_required
 def directory(request):
     q = request.GET.get("q", "").strip()
-    residents = (
-        User.objects.filter(is_active=True, profile__isnull=False)
-        .select_related("profile")
-        .order_by("profile__house_number", "first_name")
-    )
+    current = env_filter(request)
+    base = envs.users_in_envs([current.pk]) if current else envs.visible_users(request.user)
+    residents = base.select_related("profile").order_by("profile__house_number", "first_name")
     if q:
         residents = residents.filter(
             Q(first_name__icontains=q) | Q(last_name__icontains=q) | Q(profile__house_number__icontains=q)
         )
-    return render(request, "directory.html", {"residents": residents, "q": q})
+    residents = list(residents)
+    if len(envs.my_envs(request.user)) > 1:
+        mine = {e.pk: e for e in envs.my_envs(request.user)}
+        rows = EnvironmentMembership.objects.filter(user__in=[r.pk for r in residents], status=EnvironmentMembership.Status.APPROVED,
+                                                    environment_id__in=list(mine)).values_list("user_id", "environment_id")
+        tags = {}
+        for uid, eid in rows:
+            tags.setdefault(uid, []).append(mine[eid])
+        for r in residents:
+            r.tags = sorted(tags.get(r.pk, []), key=lambda e: e.name)
+    return render(request, "directory.html", {"residents": residents, "q": q, "current_env": current})
 
 
 @login_required
@@ -564,6 +652,9 @@ def profile(request):
     return render(request, "profile.html", {
         "form": form,
         "my_posts": Post.objects.filter(author=request.user).count(),
+        "memberships": EnvironmentMembership.objects.filter(user=request.user, environment__is_active=True).select_related("environment"),
+        "env_requests": EnvironmentMembership.objects.filter(environment_id__in=envs.admin_env_ids(request.user),
+                                                              status=EnvironmentMembership.Status.PENDING).count(),
     })
 
 
@@ -575,8 +666,10 @@ def _music_count(resident):
 
 @login_required
 def public_profile(request, user_id):
-    resident = resident_or_404(user_id)
+    resident = resident_or_404(user_id, request.user)
     profile = resident.profile
+    shared = envs.shared_envs(request.user, resident)
+    posts = envs.visible_posts(request.user).filter(author=resident, is_hidden=False).distinct()
     back_url = request.GET.get("next", "")
     if not url_has_allowed_host_and_scheme(back_url, allowed_hosts={request.get_host()}):
         back_url = reverse("directory")
@@ -584,8 +677,10 @@ def public_profile(request, user_id):
         "resident": resident,
         "profile": profile,
         "back_url": back_url,
-        "post_count": Post.objects.filter(author=resident, is_hidden=False).count(),
-        "recent_posts": Post.objects.filter(author=resident, is_hidden=False).order_by("-created_at")[:5],
+        "post_count": posts.count(),
+        "recent_posts": posts.order_by("-created_at")[:5],
+        "shared_envs": shared,
+        "show_age": bool(profile.age is not None and (profile.show_age or resident.pk == request.user.pk)),
         "music_count": _music_count(resident),
     })
 
@@ -594,8 +689,7 @@ def public_profile(request, user_id):
 # Chat: direct messages + groups (database-backed; the page polls every few seconds)
 # --------------------------------------------------------------------------
 def residents_except(me):
-    return (User.objects.filter(is_active=True, profile__isnull=False).exclude(pk=me.pk)
-            .select_related("profile").order_by("first_name"))
+    return envs.visible_users(me).exclude(pk=me.pk).select_related("profile").order_by("first_name")
 
 
 def preview_text(m, me, is_group=False):
@@ -620,8 +714,11 @@ def threads(me):
         .order_by("-id")[:500]
     )
     seen = {}
+    allowed = set(envs.visible_users(me).values_list("pk", flat=True))
     for m in msgs:
         other = m.recipient if m.sender_id == me.id else m.sender
+        if other.pk not in allowed:
+            continue
         t = seen.setdefault(other.id, {"user": other, "last": m, "unread": 0})
         if m.recipient_id == me.id and not m.is_read:
             t["unread"] += 1
@@ -776,7 +873,7 @@ def threads_partial(request):
 @login_required
 def conversation(request, user_id):
     me = request.user
-    other = resident_or_404(user_id)
+    other = resident_or_404(user_id, me)
     if other.pk == me.pk:
         return redirect("inbox")
     mark_dm_read(me, other)
@@ -791,7 +888,7 @@ def conversation(request, user_id):
 @login_required
 def conversation_api(request, user_id):
     me = request.user
-    other = resident_or_404(user_id)
+    other = resident_or_404(user_id, me)
     if other.pk == me.pk:
         return JsonResponse({"error": "no"}, status=400)
     if request.method == "POST":
@@ -937,8 +1034,9 @@ def notification_read(request, pk):
 
 @login_required
 def communities(request):
-    mine = Community.objects.filter(members=request.user).prefetch_related("memberships__user")
-    discover = Community.objects.exclude(members=request.user).order_by("-created_at")[:50]
+    visible = envs.visible_communities(request.user).select_related("environment")
+    mine = visible.filter(members=request.user).prefetch_related("memberships__user")
+    discover = visible.exclude(members=request.user).order_by("-created_at")[:50]
     return render(request, "communities.html", {"mine": mine, "discover": discover})
 
 
@@ -949,8 +1047,14 @@ def community_new(request):
     if not name:
         messages.error(request, "Give your community a name.")
         return redirect("communities")
+    mine = envs.my_envs(request.user)
+    wanted = request.POST.get("environment", "")
+    env = next((e for e in mine if str(e.pk) == wanted), None) or (mine[0] if len(mine) == 1 else None)
+    if env is None:
+        messages.error(request, "Choose which network this community is for.")
+        return redirect("communities")
     community = Community.objects.create(name=name, description=request.POST.get("description", "").strip()[:500],
-                                         created_by=request.user)
+                                         created_by=request.user, environment=env)
     CommunityMember.objects.create(community=community, user=request.user)
     return redirect("communities")
 
@@ -958,7 +1062,7 @@ def community_new(request):
 @login_required
 @require_POST
 def community_join(request, pk):
-    community = get_object_or_404(Community, pk=pk)
+    community = get_object_or_404(envs.visible_communities(request.user), pk=pk)
     CommunityMember.objects.get_or_create(community=community, user=request.user)
     notify(community.created_by, f"{request.user.display_name} joined {community.name}",
            url=reverse("communities"), kind=Notification.Kind.COMMUNITY, actor=request.user)
@@ -967,7 +1071,7 @@ def community_join(request, pk):
 
 @login_required
 def community_detail(request, pk):
-    community = get_object_or_404(Community, pk=pk, members=request.user)
+    community = get_object_or_404(envs.visible_communities(request.user), pk=pk, members=request.user)
     return render(request, "community.html", {"community": community, "posts": community.posts.select_related("author")[:50],
                                                 "events": community.events.select_related("created_by")[:20]})
 
@@ -975,7 +1079,7 @@ def community_detail(request, pk):
 @login_required
 @require_POST
 def community_post(request, pk):
-    community = get_object_or_404(Community, pk=pk, members=request.user)
+    community = get_object_or_404(envs.visible_communities(request.user), pk=pk, members=request.user)
     body = request.POST.get("body", "").strip()[:2000]
     if body:
         post = CommunityPost.objects.create(community=community, author=request.user, body=body)
@@ -990,7 +1094,7 @@ def community_post(request, pk):
 @login_required
 @require_POST
 def community_event(request, pk):
-    community = get_object_or_404(Community, pk=pk, members=request.user)
+    community = get_object_or_404(envs.visible_communities(request.user), pk=pk, members=request.user)
     try:
         when = timezone.datetime.fromisoformat(request.POST.get("event_date", "")).replace(tzinfo=timezone.get_current_timezone())
     except (TypeError, ValueError):
@@ -1000,6 +1104,92 @@ def community_event(request, pk):
                                   title=request.POST.get("title", "").strip()[:150],
                                   details=request.POST.get("details", "").strip(), event_date=when)
     return redirect("community_detail", pk=pk)
+
+
+# --------------------------------------------------------------------------
+# Networks: what I belong to, asking to join another, approving requests for the ones I run
+# --------------------------------------------------------------------------
+@login_required
+def networks(request):
+    me = request.user
+    EM = EnvironmentMembership
+    mine = list(EM.objects.filter(user=me, environment__is_active=True).select_related("environment").order_by("status", "environment__name"))
+    have = {m.environment_id for m in EM.objects.filter(user=me)}
+    joinable = Environment.objects.filter(is_active=True, is_listed=True).exclude(pk__in=have)
+    admin_ids = envs.admin_env_ids(me)
+    requests_ = (EM.objects.filter(environment_id__in=admin_ids, status=EM.Status.PENDING, environment__is_active=True)
+                 .select_related("user__profile", "environment").order_by("requested_at"))
+    approved = [m for m in mine if m.status == EM.Status.APPROVED]
+    return render(request, "networks.html", {
+        "memberships": mine, "joinable": joinable, "join_requests": requests_, "waiting": not approved,
+        "only_one": len(approved) <= 1,
+    })
+
+
+@login_required
+@require_POST
+def network_join(request):
+    """Ask to join more networks: tick listed ones and/or type an invite code. The network's admin approves."""
+    wanted = [int(i) for i in request.POST.getlist("networks") if i.isdigit()]
+    targets = list(Environment.objects.filter(pk__in=wanted, is_active=True, is_listed=True))
+    code = request.POST.get("join_code", "").strip()
+    if code:
+        hidden = envs.find_by_code(code)
+        if not hidden:
+            messages.error(request, "That invite code isn't right.")
+            return redirect("networks")
+        if hidden not in targets:
+            targets.append(hidden)
+    if not targets:
+        messages.error(request, "Pick a network, or enter an invite code.")
+        return redirect("networks")
+    sent = []
+    for env in targets:
+        em, created = envs.request_join(request.user, env, code)
+        if created:
+            sent.append(env.name)
+            if em.status != EnvironmentMembership.Status.APPROVED:
+                notify_env_admins(env, f"{request.user.display_name} wants to join {env.name}",
+                                  f"{request.user.house_label}. Open Networks to approve.", request.user)
+    envs.forget(request.user)
+    if sent:
+        messages.success(request, "Request sent for " + ", ".join(sent) + ". You'll get a notification once it's approved.")
+    else:
+        messages.info(request, "You've already asked to join that one.")
+    return redirect("networks")
+
+
+@login_required
+@require_POST
+def network_leave(request, pk):
+    EM = EnvironmentMembership
+    em = get_object_or_404(EM, pk=pk, user=request.user)
+    if em.status == EM.Status.APPROVED and EM.objects.filter(user=request.user, status=EM.Status.APPROVED, environment__is_active=True).count() <= 1:
+        messages.error(request, "That's your only network. Ask to join another one first, then you can leave this one.")
+        return redirect("networks")
+    name = em.environment.name
+    em.delete()
+    envs.forget(request.user)
+    messages.success(request, f"You left {name}. Your earlier posts stay there.")
+    return redirect("networks")
+
+
+@login_required
+@require_POST
+def network_decide(request, pk):
+    """A network admin (or staff) approves or declines a request to join."""
+    EM = EnvironmentMembership
+    em = get_object_or_404(EM.objects.select_related("user", "environment"), pk=pk, status=EM.Status.PENDING,
+                           environment_id__in=envs.admin_env_ids(request.user))
+    if request.POST.get("action") == "approve":
+        envs.approve(em, lambda m: notify(m.user, f"You're in {m.environment.name}", "Your request was approved. Welcome!",
+                                          reverse("feed"), Notification.Kind.SYSTEM, request.user))
+        messages.success(request, f"{em.user.display_name} is now in {em.environment.name}.")
+    else:
+        notify(em.user, f"Request to join {em.environment.name} was declined", "", reverse("networks"), Notification.Kind.SYSTEM, request.user)
+        em.delete()
+        messages.info(request, "Request declined.")
+    return redirect("networks")
 
 
 @login_required

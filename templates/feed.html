@@ -23,8 +23,10 @@
   </a>
 {% endif %}
 
+{% if multi_env %}{% include "_env_filter.html" %}{% endif %}
+
 <!-- composer -->
-<form method="post" enctype="multipart/form-data" class="card-wb p-3 mb-3">
+<form method="post" enctype="multipart/form-data" class="card-wb p-3 mb-3" id="composer">
   {% csrf_token %}
   <div class="d-flex gap-2">
     {{ user.avatar_html }}
@@ -34,6 +36,13 @@
       {% for e in form.image.errors %}<div class="text-danger small mt-1">{{ e }}</div>{% endfor %}
     </div>
   </div>
+  {% if form.mine|length > 1 %}
+  <div class="env-post mt-2" id="env-post">
+    <span class="small fw-semibold text-muted me-1">Share with</span>
+    {% for e in form.mine %}<label class="env-toggle" style="--env: {{ e.color }}"><input type="checkbox" name="environments" value="{{ e.pk }}" {% if e.pk|stringformat:"s" in picked %}checked{% endif %}><span>{{ e.name }}</span></label>{% endfor %}
+    {% for err in form.environments.errors %}<div class="text-danger small w-100">{{ err }}</div>{% endfor %}
+  </div>
+  {% endif %}
   <div class="d-flex justify-content-between align-items-center mt-2">
     <label for="post-image" class="icon-btn mb-0" role="button"><i class="bi bi-image me-1"></i><span id="file-name">Photo</span></label>
     {{ form.image }}
@@ -57,13 +66,27 @@
 
 {% if page.has_previous or page.has_next %}
   <div class="d-flex justify-content-between mb-3">
-    {% if page.has_previous %}<a class="btn btn-soft btn-sm" href="?page={{ page.previous_page_number }}"><i class="bi bi-arrow-left"></i> Newer</a>{% else %}<span></span>{% endif %}
-    {% if page.has_next %}<a class="btn btn-soft btn-sm" href="?page={{ page.next_page_number }}">Older <i class="bi bi-arrow-right"></i></a>{% endif %}
+    {% if page.has_previous %}<a class="btn btn-soft btn-sm" href="?page={{ page.previous_page_number }}{% if current_env %}&env={{ current_env.slug }}{% endif %}"><i class="bi bi-arrow-left"></i> Newer</a>{% else %}<span></span>{% endif %}
+    {% if page.has_next %}<a class="btn btn-soft btn-sm" href="?page={{ page.next_page_number }}{% if current_env %}&env={{ current_env.slug }}{% endif %}">Older <i class="bi bi-arrow-right"></i></a>{% endif %}
   </div>
 {% endif %}
 {% endblock %}
 
 {% block scripts %}
+<script>
+/* Remember which networks you last posted to (only when no network filter is chosen), so you don't re-tick them every time. */
+(function () {
+  var box = document.getElementById('env-post'); if (!box) return;
+  var boxes = box.querySelectorAll('input[type=checkbox]'), key = 'wbPostTo';
+  var anyChecked = Array.prototype.some.call(boxes, function (b) { return b.checked; });
+  try {
+    if (!anyChecked) { var saved = JSON.parse(localStorage.getItem(key) || '[]'); boxes.forEach(function (b) { if (saved.indexOf(b.value) > -1) b.checked = true; }); }
+  } catch (e) {}
+  document.getElementById('composer').addEventListener('submit', function () {
+    try { localStorage.setItem(key, JSON.stringify(Array.prototype.filter.call(boxes, function (b) { return b.checked; }).map(function (b) { return b.value; }))); } catch (e) {}
+  });
+})();
+</script>
 <script>
   var f = document.getElementById('post-image');
   f.addEventListener('change', function () {
@@ -114,6 +137,7 @@
     busy = true;
     var st = Array.prototype.map.call(articles(), function (a) { return a.dataset.post + ':' + a.dataset.state; }).slice(0, 40).join(',');
     var q = 'st=' + encodeURIComponent(st) + '&next=' + encodeURIComponent(location.pathname + location.search);
+    var envParam = new URLSearchParams(location.search).get('env'); if (envParam) q += '&env=' + encodeURIComponent(envParam);
     if (firstPage) q += '&after=' + maxId();
     fetch('{% url "feed_live" %}?' + q, { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : null; })

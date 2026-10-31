@@ -6,6 +6,7 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from .models import GroupMember, ChatGroup, Community, ResidentProfile
+from .testing import env, join
 from .navigation import HUBS, SUBTABS, nav_context
 
 User = get_user_model()
@@ -42,6 +43,7 @@ class PageTests(TestCase):
         ResidentProfile.objects.create(user=cls.me, house_number="5")
         cls.other = User.objects.create_user(username="9100000002", password="x", first_name="Raj", last_name="P", is_active=True)
         ResidentProfile.objects.create(user=cls.other, house_number="6")
+        join(cls.me); join(cls.other)
 
     def setUp(self):
         self.client.force_login(self.me)
@@ -96,7 +98,7 @@ class PageTests(TestCase):
         g = ChatGroup.objects.create(name="Gang", created_by=self.me)
         GroupMember.objects.create(group=g, user=self.me)
         self.assertIn('class="wb-subtabs', self.html("group", g.pk))
-        c = Community.objects.create(name="Chess club", created_by=self.me) if hasattr(Community, "created_by") else None
+        c = Community.objects.create(name="Chess club", created_by=self.me, environment=env()) if hasattr(Community, "created_by") else None
         if c:
             c.members.add(self.me)
             self.assertIn('class="wb-subtabs', self.html("community_detail", c.pk))

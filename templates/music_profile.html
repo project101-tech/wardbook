@@ -10,7 +10,7 @@
   <div class="text-center">
     <div class="av-lg mb-2">{{ resident.avatar_html }}</div>
     <h1 class="h4 fw-bold mb-1">{% if is_me %}Your Music Taste{% else %}{{ resident.display_name }}'s Music Taste{% endif %}</h1>
-    <span class="house-chip">House {{ resident.house }}</span>
+    <span class="house-chip">{{ resident.house_label }}</span>
     {% if mp and mp.about %}<p class="mt-3 mb-0" style="white-space:pre-wrap;overflow-wrap:anywhere">{{ mp.about }}</p>{% endif %}
     {% if mp and mp.favourites %}<div class="small mt-2" style="overflow-wrap:anywhere"><i class="bi bi-stars me-1 text-muted"></i><span class="text-muted">Favourites:</span> {{ mp.favourites }}</div>{% endif %}
   </div>

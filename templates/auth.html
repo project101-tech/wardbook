@@ -6,19 +6,29 @@
 <header class="auth-head">
   <svg class="auth-logo" aria-hidden="true"><use href="#wb-logo"/></svg>
   <h1>Wardbook</h1>
-  <p>{{ SOCIETY_NAME }}'s private neighbourhood hub</p>
+  <p>Your private community hub</p>
 </header>
 <div class="auth-card">
   <div class="card-wb p-4">
     {% if mode == "register" %}
       <h2 class="h5 fw-bold mb-1">Join your neighbours</h2>
-      <p class="text-muted small">Wardbook is for verified residents only. After you register, the committee will confirm your house and activate your account.</p>
+      <p class="text-muted small">Wardbook is for verified residents only. After you register, the admin of each network you pick will confirm you and activate your account.</p>
       <form method="post" novalidate>
         {% csrf_token %}
         {% for field in form %}
           <div class="mb-3">
-            <label class="form-label fw-semibold small" for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {{ field }}
+            {% if field.name == "networks" %}
+              <div class="form-label fw-semibold small">{{ field.label }}</div>
+              <div class="env-list">
+                {% for w in field %}
+                  <label class="env-opt">{{ w.tag }}<span class="env-opt-body"><b>{{ w.choice_label }}</b>{% if w.data.value.instance.description %}<small>{{ w.data.value.instance.description }}</small>{% endif %}</span></label>
+                {% empty %}<div class="small text-muted">No public networks yet. Enter an invite code below.</div>{% endfor %}
+              </div>
+              <div class="form-text">{{ field.help_text }}</div>
+            {% else %}
+              <label class="form-label fw-semibold small" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+            {% endif %}
             {% for e in field.errors %}<div class="text-danger small mt-1">{{ e }}</div>{% endfor %}
           </div>
         {% endfor %}

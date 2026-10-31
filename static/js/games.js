@@ -128,7 +128,7 @@
       var kids = [];
       if (d.chip) kids.push(G.el('span', { class: 'chip', style: 'background:' + d.chip }));
       kids.push(avatar(pl));
-      kids.push(G.el('div', { class: 'grow' }, [name, G.el('div', { class: 'sub', text: d.sub || (pl.house ? 'House ' + pl.house : '') })]));
+      kids.push(G.el('div', { class: 'grow' }, [name, G.el('div', { class: 'sub', text: d.sub || (pl.house || '') })]));
       if (d.extra) kids.push(d.extra);
       if (d.clock) { var c = G.el('div', { class: 'gm-clock', 'data-side': d.clock, text: '--:--' }); clockEls[d.clock] = c; kids.push(c); }
       return G.el('div', { class: 'gm-player' + (turn ? ' turn' : ''), 'data-id': pl.id }, kids);
