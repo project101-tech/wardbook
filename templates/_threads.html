@@ -1,0 +1,16 @@
+{# The conversation list. Used by messages.html and refreshed live by /messages/threads/. #}
+{% for t in threads %}
+  <a class="thread {% if active_key == t.key %}on{% endif %}" href="{{ t.url }}">
+    {{ t.avatar }}
+    <div class="flex-grow-1 min-w-0 lh-sm">
+      <div class="fw-bold text-truncate">{{ t.title }} {% if t.online %}<span class="online-dot" title="Online"></span>{% endif %}{% if t.chip %}<span class="house-chip">{{ t.chip }}</span>{% endif %}</div>
+      <small class="text-muted d-block text-truncate">{{ t.preview }}</small>
+    </div>
+    {% if t.unread %}<span class="badge rounded-pill" style="background:var(--wb-red)">{{ t.unread }}</span>{% endif %}
+  </a>
+{% empty %}
+  <div class="p-4 text-center text-muted small">
+    <i class="bi bi-chat-dots fs-2 d-block mb-1"></i>
+    No chats yet. Find a neighbour in <a href="{% url 'directory' %}">Neighbours</a> and tap Message, or start a group.
+  </div>
+{% endfor %}

@@ -1,0 +1,5 @@
+  <a href="{% url 'game_play' g.pk %}" class="lrow text-decoration-none text-reset {% if g.your_turn %}turn{% endif %}">
+    <div class="ico {% if g.key == 'chess' %}chess{% elif g.key == 'ludo' %}ludo{% elif g.key == 'snakes_ladders' %}snakes{% elif g.key == 'connect_four' %}c4{% elif g.key == 'teen_patti' %}tp{% else %}ttt{% endif %}"><i class="bi bi-controller"></i></div>
+    <div class="grow"><div class="t">{{ g.label }}</div><div class="s">vs {{ g.others }} · {{ g.when }}</div></div>
+    {% if g.your_turn %}<span class="pill you">Your move</span>{% else %}<span class="text-muted small">Waiting</span>{% endif %}
+  </a>

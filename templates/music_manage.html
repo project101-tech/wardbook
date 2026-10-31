@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}My music{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/music.css' %}">{% endblock %}
+
+{% block content %}
+<a href="{% url 'music' %}" class="small text-decoration-none"><i class="bi bi-arrow-left"></i> Music Taste</a>
+<div class="mp-hero mt-2 mb-3">
+  <div>
+    <h1 class="page-title h3 mb-1">My music</h1>
+    <p class="text-muted mb-0">Add Spotify playlists and choose what your neighbours can see.</p>
+  </div>
+  <a class="btn btn-soft" href="{% url 'music_profile' user.pk %}"><i class="bi bi-eye me-1"></i>See how neighbours see it</a>
+</div>
+
+{# ---- sharing controls ---- #}
+<form method="post" action="{% url 'music_settings' %}" class="card-wb p-3 mb-3">
+  {% csrf_token %}
+  <div class="d-flex align-items-start gap-3">
+    <div class="form-check form-switch mt-1">
+      <input class="form-check-input" type="checkbox" role="switch" id="id_is_shared" name="is_shared" {% if mp.is_shared %}checked{% endif %} style="width:2.6em;height:1.4em">
+    </div>
+    <label for="id_is_shared" class="flex-grow-1" style="cursor:pointer">
+      <div class="fw-bold">Share my music with neighbours {% if mp.is_shared %}<span class="mm-pill on">On</span>{% else %}<span class="mm-pill off">Off</span>{% endif %}</div>
+      <div class="small text-muted">When this is on, other residents can find you in Music Taste and play the playlists below that are marked <b>Visible</b>
+        ({{ visible_count }} right now). When it is off, nobody sees anything. Only your name, house number and what you choose here are shown.</div>
+    </label>
+  </div>
+  <div class="row g-2 mt-2">
+    <div class="col-12 col-md-6">
+      <label class="form-label small fw-semibold mb-1" for="id_about">About my taste <span class="text-muted fw-normal">(optional)</span></label>
+      {{ settings_form.about }}
+    </div>
+    <div class="col-12 col-md-6">
+      <label class="form-label small fw-semibold mb-1" for="id_favourites">Favourite artists or tracks <span class="text-muted fw-normal">(optional)</span></label>
+      {{ settings_form.favourites }}
+    </div>
+  </div>
+  <div class="text-end mt-3"><button class="btn btn-wb" type="submit">Save sharing settings</button></div>
+</form>
+
+{# ---- add a playlist ---- #}
+<form method="post" action="{% url 'music_add' %}" class="card-wb p-3 mb-3" id="mm-add" novalidate>
+  {% csrf_token %}
+  <h2 class="h6 fw-bold mb-1">Add a playlist</h2>
+  <p class="small text-muted mb-2">In Spotify, open the playlist, tap <b>⋯ → Share → Copy link to playlist</b>, then paste it here. Private playlists can't be played by neighbours: make it public in Spotify first.</p>
+  <div class="input-group">
+    {{ add_form.url }}
+    <button type="button" class="btn btn-soft" id="mm-preview-btn" data-url="{% url 'music_preview' %}" style="border-radius:0 12px 12px 0">Preview</button>
+  </div>
+  {% for e in add_form.url.errors %}<div class="text-danger small mt-1">{{ e }}</div>{% endfor %}
+  <div id="mm-preview" class="mm-preview" hidden aria-live="polite"></div>
+  <div class="mt-2">
+    <label class="form-label small fw-semibold mb-1" for="id_description">Note <span class="text-muted fw-normal">(optional)</span></label>
+    {{ add_form.description }}
+    {% for e in add_form.description.errors %}<div class="text-danger small mt-1">{{ e }}</div>{% endfor %}
+  </div>
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
+    <div class="form-check mb-0">
+      <input class="form-check-input" type="checkbox" id="id_is_visible" name="is_visible" {% if not add_form.is_bound or add_form.is_visible.value %}checked{% endif %}>
+      <label class="form-check-label small" for="id_is_visible">Visible to neighbours</label>
+    </div>
+    <button class="btn btn-wb" type="submit" {% if full %}disabled{% endif %}><i class="bi bi-plus-lg me-1"></i>Add playlist</button>
+  </div>
+  {% if full %}<div class="small text-muted mt-2">You've reached the limit of {{ limit }} playlists. Remove one to add another.</div>{% endif %}
+</form>
+
+{# ---- my playlists ---- #}
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h2 class="h5 fw-bold mb-0">My playlists</h2><span class="small text-muted">{{ playlists|length }} of {{ limit }}</span>
+</div>
+{% for pl in playlists %}
+  <div class="card-wb p-3 mb-2" id="pl-{{ pl.pk }}">
+    <div class="mm-row">
+      {% if pl.cover_url %}<img class="mp-cover" src="{{ pl.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}<span class="mp-cover ph"><i class="bi bi-music-note-list"></i></span>{% endif %}
+      <div class="info">
+        <div class="t">{{ pl.display_title }}</div>
+        <div class="mt-1">
+          {% if pl.is_visible %}<span class="mm-pill on">Visible</span>{% else %}<span class="mm-pill off">Hidden</span>{% endif %}
+          {% if pl.is_unavailable %}<span class="mm-pill warn" title="Spotify couldn't find this playlist">Not found on Spotify</span>{% endif %}
+        </div>
+        {% if pl.description %}<div class="small text-muted mt-1" style="overflow-wrap:anywhere">{{ pl.description }}</div>{% endif %}
+      </div>
+      <div class="mm-actions">
+        <form method="post" action="{% url 'music_move' pl.pk %}">{% csrf_token %}<input type="hidden" name="dir" value="up"><button class="icon-btn" aria-label="Move up" {% if forloop.first %}disabled{% endif %}><i class="bi bi-arrow-up"></i></button></form>
+        <form method="post" action="{% url 'music_move' pl.pk %}">{% csrf_token %}<input type="hidden" name="dir" value="down"><button class="icon-btn" aria-label="Move down" {% if forloop.last %}disabled{% endif %}><i class="bi bi-arrow-down"></i></button></form>
+        <form method="post" action="{% url 'music_toggle' pl.pk %}">{% csrf_token %}<button class="icon-btn" aria-label="{% if pl.is_visible %}Hide from neighbours{% else %}Show to neighbours{% endif %}" title="{% if pl.is_visible %}Hide from neighbours{% else %}Show to neighbours{% endif %}"><i class="bi bi-eye{% if pl.is_visible %}-slash{% endif %}"></i></button></form>
+        <button class="icon-btn" type="button" data-bs-toggle="collapse" data-bs-target="#edit-{{ pl.pk }}" aria-label="Edit" aria-expanded="false"><i class="bi bi-pencil"></i></button>
+        <form method="post" action="{% url 'music_delete' pl.pk %}" onsubmit="return confirm('Remove this playlist from your music profile?');">{% csrf_token %}<button class="icon-btn" aria-label="Remove" style="color:var(--wb-red)"><i class="bi bi-trash"></i></button></form>
+      </div>
+    </div>
+    <div class="collapse" id="edit-{{ pl.pk }}">
+      <form method="post" action="{% url 'music_edit' pl.pk %}" class="mm-edit">
+        {% csrf_token %}
+        <label class="form-label small fw-semibold mb-1" for="t-{{ pl.pk }}">Title</label>
+        <input class="form-control mb-2" id="t-{{ pl.pk }}" name="title" maxlength="200" value="{{ pl.title }}" placeholder="Spotify playlist">
+        <label class="form-label small fw-semibold mb-1" for="d-{{ pl.pk }}">Note</label>
+        <textarea class="form-control mb-2" id="d-{{ pl.pk }}" name="description" rows="2" maxlength="300" placeholder="Why you love it (optional)">{{ pl.description }}</textarea>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div class="form-check mb-0"><input class="form-check-input" type="checkbox" id="v-{{ pl.pk }}" name="is_visible" {% if pl.is_visible %}checked{% endif %}><label class="form-check-label small" for="v-{{ pl.pk }}">Visible to neighbours</label></div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-soft btn-sm" type="submit" formaction="{% url 'music_refresh' pl.pk %}" formnovalidate title="Re-check this playlist on Spotify"><i class="bi bi-arrow-clockwise me-1"></i>Refresh from Spotify</button>
+            <a class="btn btn-soft btn-sm" href="{{ pl.url }}" target="_blank" rel="noopener noreferrer"><i class="bi bi-spotify me-1"></i>Open</a>
+            <button class="btn btn-wb btn-sm" type="submit">Save</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+{% empty %}
+  <div class="card-wb p-4 text-center text-muted"><i class="bi bi-music-note-list fs-1 d-block mb-2"></i>You haven't added any playlists yet.</div>
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{% static 'js/music.js' %}"></script>
+{% endblock %}

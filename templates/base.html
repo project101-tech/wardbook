@@ -1,0 +1,392 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1877F2">
+  <title>{% block title %}Home{% endblock %} · Wardbook</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%231877F2'/%3E%3Cpath d='M23 32C26 54 30 69 38 69C46 69 45 40 50 40C55 40 54 69 62 69C70 69 74 54 77 32' fill='none' stroke='white' stroke-width='10' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --wb-accent: #1877F2; --wb-accent-dark: #0F5BC4; --wb-accent-soft: #E7F0FF;
+      --wb-amber: #f5a524; --wb-red: #e41e3f; --wb-ok: #1a9f5c;
+      --wb-bg: #f0f2f5; --wb-ink: #1c1e21; --wb-muted: #65676b; --wb-line: #dfe3ea;
+    }
+    body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: var(--wb-bg); color: var(--wb-ink);
+           padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+    @media (min-width: 768px) { body { padding-bottom: 0; } }
+    a { color: var(--wb-accent); }
+    .text-muted { color: var(--wb-muted) !important; }
+
+    /* top bar */
+    .wb-top { background: #fff; border-bottom: 1px solid var(--wb-line); position: sticky; top: 0; z-index: 20; }
+    .wb-brand { color: var(--wb-accent); text-decoration: none; font-weight: 800; font-size: 1.35rem; letter-spacing: -.03em;
+                display: flex; align-items: center; gap: .55rem; }
+    .wb-brand small { display: block; font-weight: 600; font-size: .68rem; color: var(--wb-muted); letter-spacing: 0; margin-top: -3px; }
+    .wb-mark { width: 38px; height: 38px; flex: none; display: block; }
+    .wb-toplink { color: var(--wb-muted); text-decoration: none; font-weight: 600; font-size: .92rem;
+                  padding: .45rem .8rem; border-radius: 10px; position: relative; }
+    .wb-toplink:hover { color: var(--wb-ink); background: var(--wb-bg); }
+    .wb-toplink.active { color: var(--wb-accent); background: var(--wb-accent-soft); }
+    .wb-toplink { white-space: nowrap; }
+    .wb-hubs { gap: .15rem; }
+    .wb-hubs .wb-toplink { display: inline-flex; align-items: center; gap: .4rem; padding: .5rem .8rem; }
+    .wb-hubs .wb-toplink .wb-badge, .wb-subtab .wb-badge { position: static; margin: 0 0 0 .1rem; }
+    @media (max-width: 991px) { .wb-hubs .wb-toplink { padding: .5rem .55rem; font-size: .84rem; gap: .3rem; } .wb-brand-name { display: none !important; } }
+    .wb-iconlink { position: relative; display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; color: var(--wb-muted); text-decoration: none; font-size: 1.2rem; }
+    .wb-iconlink:hover { background: var(--wb-bg); color: var(--wb-ink); }
+    .wb-iconlink.active { background: var(--wb-accent-soft); color: var(--wb-accent); }
+    .wb-iconlink .wb-badge { top: 1px; left: auto; right: -1px; margin: 0; }
+    .wb-me .av { width: 34px; height: 34px; font-size: .9rem; }
+    .wb-me.active { box-shadow: 0 0 0 2px var(--wb-accent); }
+    /* the little tab strip inside Connect and Hangout */
+    .wb-subtabs { display: flex; gap: .35rem; overflow-x: auto; padding: .15rem .1rem .6rem; margin: 0 -.1rem; scrollbar-width: none; }
+    .wb-subtabs::-webkit-scrollbar { display: none; }
+    .wb-subtab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: .4rem; padding: .45rem .95rem; border-radius: 999px; background: #fff; border: 1px solid var(--wb-line);
+                 color: var(--wb-muted); font-weight: 700; font-size: .88rem; text-decoration: none; }
+    .wb-subtab:hover { color: var(--wb-ink); }
+    .wb-subtab.active { background: var(--wb-accent); border-color: var(--wb-accent); color: #fff; }
+    .wb-subtabs.n3 .wb-subtab, .wb-subtabs.n2 .wb-subtab { flex: 1 1 0; justify-content: center; }
+    @media (max-width: 575px) { .wb-subtab { padding: .45rem .55rem; font-size: .82rem; gap: .3rem; } .wb-subtabs { gap: .3rem; } }
+    @media (max-width: 439px) { .wb-subtabs.n3 .wb-subtab i { display: none; } }
+    @media (min-width: 768px) { .wb-subtabs.n3 .wb-subtab, .wb-subtabs.n2 .wb-subtab { flex: 0 0 auto; } }
+
+    /* bottom tab bar (mobile) */
+    .wb-tabs { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; background: #fff; border-top: 1px solid var(--wb-line);
+           display: flex; gap: .25rem; overflow-x: auto; white-space: nowrap; padding: .35rem .5rem calc(.35rem + env(safe-area-inset-bottom));
+           scrollbar-width: none; }
+    .wb-tabs::-webkit-scrollbar { display: none; }
+    .wb-tab { flex: 1 1 0; min-width: 0; height: 48px; text-align: center; text-decoration: none; color: var(--wb-muted); font-size: .68rem; font-weight: 600;
+          position: relative; padding: .25rem .45rem; border-radius: 10px; line-height: 1.1; }
+    .wb-tab i { display:block; height: 24px; line-height: 22px; font-size: 1.25rem; }
+    .wb-tab .wb-badge { top: 0; }
+    .wb-tab i { display: block; font-size: 1.35rem; line-height: 1.2; }
+    .wb-tab.active { color: var(--wb-accent); }
+    .wb-badge { position: absolute; top: 0; left: 50%; margin-left: 6px; background: var(--wb-red); color: #fff;
+                font-size: .62rem; font-weight: 700; border-radius: 999px; padding: 0 .38rem; min-width: 1.1rem; line-height: 1.1rem; }
+
+    /* layout + components */
+    .wb-main { max-width: 720px; }
+    .wb-main.wide { max-width: 1000px; }
+    .card-wb { background: #fff; border: 1px solid var(--wb-line); border-radius: 18px; box-shadow: 0 1px 2px rgba(28,30,33,.05); }
+    .btn-wb { background: var(--wb-accent); color: #fff; border: 0; border-radius: 12px; font-weight: 600; padding: .55rem 1.1rem; }
+    .btn-wb:hover, .btn-wb:focus { background: var(--wb-accent-dark); color: #fff; }
+    .btn-soft { background: var(--wb-accent-soft); color: var(--wb-accent); border: 0; border-radius: 12px; font-weight: 600; }
+    .btn-soft:hover { background: #d4e4ff; color: var(--wb-accent-dark); }
+    .btn-soft.on { background: var(--wb-accent); color: #fff; }
+    .btn-soft.on-no { background: #fde8ec; color: var(--wb-red); }
+    .form-control { border-radius: 12px; border-color: #ccd2dc; padding: .6rem .85rem; }
+    .form-control:focus { border-color: var(--wb-accent); box-shadow: 0 0 0 .2rem rgba(24,119,242,.18); }
+    .av { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; background: var(--wb-accent); color: #fff;
+          display: inline-flex; align-items: center; justify-content: center; font-weight: 700; flex: none; }
+    .av-sm .av { width: 32px; height: 32px; font-size: .8rem; }
+    .av-lg .av { width: 96px; height: 96px; font-size: 2.3rem; }
+    .av.group { background: #42526e; }
+    .house-chip { background: var(--wb-accent-soft); color: var(--wb-accent); border-radius: 999px; padding: .1rem .55rem;
+                  font-size: .72rem; font-weight: 700; white-space: nowrap; }
+    .online-dot { display:inline-block; width:.55rem; height:.55rem; border-radius:50%; background:#1a9f5c; vertical-align:middle; }
+    .page-title { font-weight: 800; letter-spacing: -.02em; }
+    .icon-btn { background: none; border: 0; color: var(--wb-muted); font-weight: 600; font-size: .9rem; padding: .3rem .6rem;
+                border-radius: 10px; }
+    .icon-btn:hover { background: var(--wb-accent-soft); color: var(--wb-accent); }
+    .icon-btn.liked { color: #d6336c; }
+    .post-img { display: block; width: 100%; max-height: 560px; object-fit: contain; background: #f5f6f8; border-radius: 14px; margin-top: .75rem; }
+    .post-body { white-space: normal; overflow-wrap: anywhere; }
+    .comment { background: #f0f2f5; border-radius: 14px; padding: .45rem .75rem; }
+    .alert { border-radius: 14px; border: 0; }
+
+    /* live toasts + notification prompt */
+    #wb-toasts { position: fixed; left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 60;
+                 display: flex; flex-direction: column; gap: .5rem; pointer-events: none; }
+    @media (min-width: 768px) { #wb-toasts { left: auto; right: 20px; bottom: 20px; width: 340px; } }
+    .wb-toast { pointer-events: auto; background: #fff; border: 1px solid var(--wb-line); border-left: 4px solid var(--wb-accent);
+                border-radius: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.16); padding: .6rem .85rem; color: inherit;
+                text-decoration: none; display: block; animation: wbIn .22s ease-out; }
+    .wb-toast b { display: block; font-size: .88rem; } .wb-toast span { display: block; font-size: .8rem; color: var(--wb-muted); overflow-wrap: anywhere; }
+    @keyframes wbIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    #wb-push-bar { background: var(--wb-accent-soft); border-bottom: 1px solid #cfe1ff; }
+  </style>
+  <link rel="stylesheet" href="{% static 'css/wardbook-ui.css' %}">
+  <script>
+  /* arriving from a tab tap: slide in from the side the tab sits on (set by the click handler near the end of the page) */
+  (function () {
+    try {
+      var v = sessionStorage.getItem('wbDir'); sessionStorage.removeItem('wbDir');
+      if (!v || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
+      var parts = v.split(','), d = parseInt(parts[0], 10);
+      if (d && Date.now() - parseInt(parts[1], 10) < 5000) document.documentElement.classList.add(d > 0 ? 'wb-enter-fwd' : 'wb-enter-back');
+    } catch (e) {}
+  })();
+  </script>
+  {% block head %}{% endblock %}
+</head>
+<body{% if user.is_authenticated %} data-nid="{{ latest_notification_id|default:0 }}"{% endif %}>
+<!-- the curvy-W logo, defined once and reused with <use href="#wb-logo"> -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="wb-logo" viewBox="0 0 100 100">
+    <circle cx="50" cy="50" r="50" fill="#1877F2"/>
+    <path d="M23 32C26 54 30 69 38 69C46 69 45 40 50 40C55 40 54 69 62 69C70 69 74 54 77 32"
+          fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+</svg>
+{% with here=request.resolver_match.url_name %}
+{% if user.is_authenticated %}
+  <header class="wb-top">
+    <div class="container d-flex align-items-center justify-content-between py-2" style="max-width: 1000px;">
+      <a href="{% url 'feed' %}" class="wb-brand">
+        <svg class="wb-mark" aria-hidden="true"><use href="#wb-logo"/></svg>
+        <span class="wb-brand-name d-none d-sm-inline">Wardbook</span>
+      </a>
+      <nav class="wb-hubs d-none d-md-flex align-items-center" aria-label="Main">
+        {% for h in hubs %}<a class="wb-toplink {% if h.active %}active{% endif %}" href="{% url h.url %}"><i class="bi bi-{% if h.active %}{{ h.on }}{% else %}{{ h.icon }}{% endif %}"></i>{{ h.label }}{% if h.badge %}<span class="wb-badge js-dms {% if not unread_dms %}d-none{% endif %}">{{ unread_dms }}</span>{% endif %}</a>{% endfor %}
+      </nav>
+      <div class="d-flex align-items-center gap-1">
+        <a class="wb-iconlink {% if here == 'directory' %}active{% endif %}" href="{% url 'directory' %}" title="Neighbours" aria-label="Neighbours"><i class="bi bi-people-fill"></i></a>
+        <a class="wb-iconlink {% if here == 'notifications' %}active{% endif %}" href="{% url 'notifications' %}" title="Notifications" aria-label="Notifications"><i class="bi bi-bell-fill"></i><span class="wb-badge js-notifs {% if not unread_notifications %}d-none{% endif %}">{{ unread_notifications }}</span></a>
+        {% if user.is_staff %}<a class="wb-iconlink" href="/admin/" title="Control room" aria-label="Control room"><i class="bi bi-gear-fill"></i></a>{% endif %}
+        <a class="wb-iconlink wb-me {% if here == 'profile' %}active{% endif %}" href="{% url 'profile' %}" title="My profile" aria-label="My profile">{{ user.avatar_html }}</a>
+      </div>
+    </div>
+  </header>
+  <div id="wb-push-bar" class="d-none">
+    <div class="container d-flex align-items-center gap-2 py-2 small" style="max-width: 1000px;">
+      <i class="bi bi-bell-fill" style="color:var(--wb-accent)"></i>
+      <span class="flex-grow-1">Get messages and updates on this phone even when Wardbook is closed.</span>
+      <button type="button" id="wb-push-on" class="btn btn-wb btn-sm py-1">Turn on</button>
+      <button type="button" id="wb-push-later" class="icon-btn" aria-label="Not now"><i class="bi bi-x-lg"></i></button>
+    </div>
+  </div>
+{% endif %}
+
+<main class="container wb-main {% block mainclass %}{% endblock %} py-3">
+  {% for m in messages %}
+    <div class="alert alert-{% if m.tags == 'error' %}danger{% else %}{{ m.tags|default:'info' }}{% endif %} shadow-sm" role="alert">{{ m }}</div>
+  {% endfor %}
+  {% if user.is_authenticated and subtabs %}
+  <nav class="wb-subtabs n{{ subtabs|length }}" aria-label="{% if hub == 'connect' %}Connect{% else %}Hangout{% endif %}">
+    {% for t in subtabs %}<a class="wb-subtab {% if t.active %}active{% endif %}" href="{% url t.url %}" {% if t.active %}aria-current="page"{% endif %}><i class="bi bi-{{ t.icon }}"></i>{{ t.label }}{% if t.badge %}<span class="wb-badge js-dms {% if not unread_dms %}d-none{% endif %}">{{ unread_dms }}</span>{% endif %}</a>{% endfor %}
+  </nav>
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+
+{% if user.is_authenticated %}
+  <nav class="wb-tabs d-md-none" aria-label="Main">
+    {% for h in hubs %}<a class="wb-tab {% if h.active %}active{% endif %}" href="{% url h.url %}"><i class="bi bi-{% if h.active %}{{ h.on }}{% else %}{{ h.icon }}{% endif %}"></i>{{ h.short }}{% if h.badge %}<span class="wb-badge js-dms {% if not unread_dms %}d-none{% endif %}">{{ unread_dms }}</span>{% endif %}</a>{% endfor %}
+  </nav>
+{% endif %}
+{% endwith %}
+{% if user.is_authenticated %}
+<script>
+/* While you type on a phone the keyboard takes half the screen, so the tab bar hides until you finish. */
+(function () {
+  var root = document.documentElement;
+  function isText(t) { return t && (t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && /^(text|search|email|url|tel|password|number)$/.test(t.type))); }
+  document.addEventListener('focusin', function (e) { if (isText(e.target)) root.classList.add('kb-open'); });
+  document.addEventListener('focusout', function () { setTimeout(function () { if (!isText(document.activeElement)) root.classList.remove('kb-open'); }, 120); });
+})();
+</script>
+<script type="speculationrules">{"prefetch":[{"where":{"selector_matches":".wb-tab, .wb-toplink, .wb-subtab, .wb-iconlink, .wb-brand"},"eagerness":"moderate"}]}</script>
+<script>
+/* Tap a tab: the bubble flies over and the page slides away at once, so it feels instant even while the next page is still loading. */
+(function () {
+  var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches, undo = null;
+  function pos(el) {
+    var tabs = document.querySelectorAll('.wb-tab'), subs = document.querySelectorAll('.wb-subtab'), i = -1, j = 0, k;
+    if (el.classList.contains('wb-subtab')) { for (k = 0; k < tabs.length; k++) if (tabs[k].classList.contains('active')) i = k; return Math.max(i, 0) * 10 + [].indexOf.call(subs, el); }
+    var all = el.classList.contains('wb-tab') ? tabs : document.querySelectorAll('.wb-toplink');
+    return [].indexOf.call(all, el) * 10;
+  }
+  function here() {
+    var tabs = document.querySelectorAll('.wb-tab'), subs = document.querySelectorAll('.wb-subtab'), i = -1, j = 0, k;
+    for (k = 0; k < tabs.length; k++) if (tabs[k].classList.contains('active')) i = k;
+    for (k = 0; k < subs.length; k++) if (subs[k].classList.contains('active')) j = k;
+    return i < 0 ? null : i * 10 + j;
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('.wb-tab, .wb-toplink, .wb-subtab');
+    if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.target === '_blank') return;
+    var box = a.closest('.wb-tabs, .wb-hubs, .wb-subtabs'), from = box && box.querySelector('.active');
+    if (!box || !from || from === a) return;
+    var now = here(), next = pos(a), d = (now === null || next === now) ? 0 : (next > now ? 1 : -1);
+    try { if (d) sessionStorage.setItem('wbDir', d + ',' + Date.now()); } catch (x) {}
+    if (reduce) return;
+    var br = box.getBoundingClientRect(), fr = from.getBoundingClientRect(), tr = a.getBoundingClientRect(), cs = getComputedStyle(from);
+    var pill = document.createElement('i'); pill.className = 'wb-pill-fly';
+    pill.style.cssText = 'left:' + (fr.left - br.left + box.scrollLeft - box.clientLeft) + 'px;top:' + (fr.top - br.top + box.scrollTop - box.clientTop) + 'px;width:' + fr.width + 'px;height:' + fr.height + 'px;border-radius:' + cs.borderRadius;
+    box.insertBefore(pill, box.firstChild);
+    from.classList.remove('active'); a.classList.add('is-next');
+    pill.animate([{ transform: 'translate(0,0)', width: fr.width + 'px' }, { transform: 'translate(' + (tr.left - fr.left) + 'px,' + (tr.top - fr.top) + 'px)', width: tr.width + 'px' }],
+                 { duration: 190, easing: 'cubic-bezier(.3, 1.25, .5, 1)', fill: 'forwards' });
+    if (d) document.documentElement.classList.add(d > 0 ? 'wb-leaving-fwd' : 'wb-leaving-back');
+    undo = function () { pill.remove(); from.classList.add('active'); a.classList.remove('is-next'); document.documentElement.classList.remove('wb-leaving-fwd', 'wb-leaving-back'); };
+  });
+  window.addEventListener('pageshow', function (e) { if (e.persisted && undo) { undo(); undo = null; } });
+})();
+</script>
+{% endif %}
+{% if user.is_authenticated %}
+<div id="wb-toasts" aria-live="polite"></div>
+<script>
+/* ---- wbLive: one parked request per visible tab; the server answers the instant something changes ---- */
+window.wbLive = (function () {
+  var handlers = { n: function () {} }, vers = {}, notifCbs = [], running = false, stopped = false, ctrl = null;
+  var nid = parseInt(document.body.dataset.nid || '0', 10), skipToasts = false, baseTitle = document.title, backoff = 0;
+  var url = '{% url "live" %}';
+
+  function setCounts(c) {
+    document.querySelectorAll('.js-dms').forEach(function (e) { e.textContent = c.dms; e.classList.toggle('d-none', !c.dms); });
+    document.querySelectorAll('.js-notifs').forEach(function (e) { e.textContent = c.notifs; e.classList.toggle('d-none', !c.notifs); });
+    document.title = (c.notifs ? '(' + c.notifs + ') ' : '') + baseTitle;
+  }
+  function toast(n) {
+    var box = document.getElementById('wb-toasts');
+    var a = document.createElement('a'); a.className = 'wb-toast';
+    a.href = (n.url && n.url.charAt(0) === '/') ? n.url : '{% url "notifications" %}';
+    var t = document.createElement('b'); t.textContent = n.title; a.appendChild(t);
+    if (n.body) { var b = document.createElement('span'); b.textContent = n.body; a.appendChild(b); }
+    box.appendChild(a);
+    while (box.children.length > 3) box.removeChild(box.firstChild);
+    setTimeout(function () { if (a.parentNode) a.parentNode.removeChild(a); }, 7000);
+  }
+  function gotNotif(n) {
+    notifCbs.forEach(function (cb) { try { cb(n); } catch (e) {} });
+    var here = location.pathname;
+    if (skipToasts || here === '{% url "notifications" %}' || (n.kind === 'message' && n.url === here)) return;
+    toast(n);
+  }
+  function handle(j) {
+    if (j.counts) setCounts(j.counts);
+    (j.notifs || []).forEach(function (n) { if (n.id > nid) gotNotif(n); });
+    if (typeof j.nid === 'number' && j.nid > nid) nid = j.nid;
+    (j.changed || []).forEach(function (name) {
+      var first = !(name in vers);
+      vers[name] = j.v[name];
+      if (handlers[name]) { try { handlers[name](first); } catch (e) { if (window.console) console.error(e); } }
+    });
+  }
+  function loop() {
+    if (running || stopped || document.hidden) return;
+    running = true;
+    var s = Object.keys(handlers).map(function (n) { return n + ':' + (n in vers ? vers[n] : '-'); }).join(',');
+    ctrl = new AbortController();
+    var watchdog = setTimeout(function () { ctrl.abort(); }, 35000);
+    var delay = 0;
+    fetch(url + '?s=' + encodeURIComponent(s) + '&nid=' + nid, { credentials: 'same-origin', signal: ctrl.signal, cache: 'no-store' })
+      .then(function (r) { if (r.status === 401) { stopped = true; throw 'auth'; } if (!r.ok) throw r.status; return r.json(); })
+      .then(function (j) { backoff = 0; delay = j.retry || 0; handle(j); skipToasts = false; })
+      .catch(function (e) { if (e !== 'auth' && !(e && e.name === 'AbortError')) { backoff = Math.min((backoff || 1000) * 2, 20000); delay = backoff; } })
+      .then(function () { clearTimeout(watchdog); running = false; setTimeout(loop, delay); });
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { if (ctrl) ctrl.abort(); return; }   // closed tabs are covered by push; this frees the server
+    vers = {}; skipToasts = true;                                // back on screen: resync every channel once, quietly
+    loop();
+  });
+  window.addEventListener('online', loop);
+  setTimeout(loop, 0);   // after the page's own scripts have registered their channels
+  return {
+    on: function (name, fn) { handlers[name] = fn; },
+    onNotif: function (cb) { notifCbs.push(cb); }
+  };
+})();
+
+/* ---- wbPush: turn notifications on, keep this device registered to whoever is logged in ---- */
+window.wbPush = (function () {
+  var KEY = '{{ VAPID_PUBLIC_KEY }}', CONFIGURED = {{ PUSH_CONFIGURED|yesno:"true,false" }}, UID = '{{ user.pk }}';
+  var supported = ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
+  var CSRF = '{{ csrf_token }}';
+  function keyBytes(k) { var pad = '='.repeat((4 - k.length % 4) % 4), raw = atob((k + pad).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(raw, function (c) { return c.charCodeAt(0); }); }
+  function sameKey(sub) {
+    var cur = sub.options && sub.options.applicationServerKey; if (!cur) return true;
+    var a = new Uint8Array(cur), b = keyBytes(KEY); if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+  function post(u, body) { return fetch(u, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }); }
+  function flag(sub, set) { var k = 'wbps:' + UID + ':' + sub.endpoint; try { if (set === undefined) return sessionStorage.getItem(k); set ? sessionStorage.setItem(k, '1') : sessionStorage.removeItem(k); } catch (e) {} }
+  function state() {
+    if (!supported) return 'unsupported';
+    if (!CONFIGURED) return 'unconfigured';
+    return Notification.permission === 'granted' ? 'on' : Notification.permission === 'denied' ? 'denied' : 'off';
+  }
+  var regP = null;
+  function ready() {
+    if (!regP) regP = navigator.serviceWorker.register('{% url "service_worker" %}', { scope: '/' }).then(function () { return navigator.serviceWorker.ready; });
+    return regP;
+  }
+  // Called on every page: heals a missing / expired / other-account subscription without bothering the user.
+  async function ensure() {
+    if (!supported || !CONFIGURED) return state();
+    var reg = await ready();
+    if (Notification.permission !== 'granted') return state();
+    var sub = await reg.pushManager.getSubscription();
+    if (sub && !sameKey(sub)) {   // the server's keys changed: forget the old subscription here and on the server
+      flag(sub, false); try { await post('{% url "push_unsubscribe" %}', { endpoint: sub.endpoint }); } catch (e) {}
+      await sub.unsubscribe(); sub = null;
+    }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(KEY) });
+    if (!flag(sub)) {
+      var r = await post('{% url "push_subscribe" %}', sub.toJSON());
+      if (!r.ok) { var e = await r.json().catch(function () { return {}; }); throw new Error(e.error || 'The server did not accept this device.'); }
+      flag(sub, true);
+    }
+    return 'on';
+  }
+  async function enable() {          // must run from a tap
+    if (state() === 'unsupported' || state() === 'unconfigured') throw new Error('This browser or server cannot send notifications.');
+    var p = await Notification.requestPermission();
+    if (p !== 'granted') throw new Error('Notifications are blocked. Allow them for this site in your browser settings, then try again.');
+    return ensure();
+  }
+  async function detach() {          // log out: stop this phone showing the previous person's alerts
+    try {
+      var reg = await Promise.race([ready(), new Promise(function (_, rej) { setTimeout(rej, 1500); })]);
+      var sub = await reg.pushManager.getSubscription();
+      if (sub) { flag(sub, false); await post('{% url "push_unsubscribe" %}', { endpoint: sub.endpoint }); }
+    } catch (e) {}
+  }
+  async function test() { var r = await post('{% url "push_test" %}'); return r.json(); }
+  async function device() {
+    if (!supported) return null;
+    var reg = await ready(); return reg.pushManager.getSubscription();
+  }
+  return { state: state, ensure: ensure, enable: enable, detach: detach, test: test, device: device };
+})();
+
+/* prompt bar + self-healing registration */
+(function () {
+  var bar = document.getElementById('wb-push-bar'), later = null;
+  try { later = parseInt(localStorage.getItem('wb-push-later') || '0', 10); } catch (e) {}
+  function hide() { bar.classList.add('d-none'); }
+  wbPush.ensure().then(function (st) {
+    if (st === 'off' && !(later && Date.now() - later < 14 * 864e5)) bar.classList.remove('d-none');
+  }).catch(function (e) { if (window.console) console.warn('push setup:', e); });
+  document.getElementById('wb-push-on').addEventListener('click', function () {
+    wbPush.enable().then(hide).catch(function (e) { hide(); alert(e.message); });
+  });
+  document.getElementById('wb-push-later').addEventListener('click', function () {
+    hide(); try { localStorage.setItem('wb-push-later', String(Date.now())); } catch (e) {}
+  });
+  document.addEventListener('submit', function (e) {   // log out: detach this phone from my account first
+    var f = e.target;
+    if (f.getAttribute && f.getAttribute('action') === '{% url "logout" %}') { e.preventDefault(); wbPush.detach().then(function () { f.submit(); }); }
+  });
+})();
+</script>
+{% endif %}
+{% if user.is_authenticated %}<script src="{% static 'js/mentions.js' %}"></script>{% endif %}
+{% block scripts %}{% endblock %}
+{% if user.is_authenticated %}
+<script>
+(function () { function beat() { if (document.hidden) return; fetch('{% url "presence" %}', {method:'POST', credentials:'same-origin', headers:{'X-CSRFToken':'{{ csrf_token }}'}}).catch(function(){}); } beat(); setInterval(beat, 25000); document.addEventListener('visibilitychange', beat); })();
+</script>
+{% endif %}
+</body>
+</html>

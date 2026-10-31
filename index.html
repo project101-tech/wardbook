@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sort It Right – Ward 11A</title>
+<meta name="theme-color" content="#e9f8ef">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>♻️</text></svg>">
+
+<!-- Firebase App (the core Firebase SDK) -->
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<!-- Firebase Firestore -->
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+<style>
+:root{
+  --bg1:#eafaf0; --bg2:#d3efdd; --ink:#14301f; --muted:#4d6a58;
+  --green:#1f9d55; --blue:#2563eb; --red:#dc2626; --black:#2a2a33; --yellow:#eab308;
+  --gold:#f5b301;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%}
+body{
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;
+  color:var(--ink);
+  background:radial-gradient(1100px 560px at 50% -10%,#fff 0,transparent 62%),linear-gradient(180deg,var(--bg1),var(--bg2));
+  background-attachment:fixed;
+  min-height:100dvh;
+  -webkit-user-select:none;user-select:none;
+  overflow-x:hidden;
+}
+button{font:inherit;cursor:pointer}
+#app{max-width:960px;margin:0 auto;min-height:100dvh;position:relative}
+.screen{display:none;min-height:100dvh}
+.screen.active{display:flex;flex-direction:column}
+
+/* ---------- shared bits ---------- */
+.btn{
+  border:0;border-radius:999px;padding:14px 34px;font-weight:800;font-size:clamp(17px,4.5vw,22px);
+  background:var(--green);color:#fff;box-shadow:0 6px 0 #14703d,0 12px 24px rgba(20,112,61,.28);
+  transition:transform .12s,box-shadow .12s;
+}
+.btn:hover{transform:translateY(-2px)}
+.btn:active{transform:translateY(4px);box-shadow:0 2px 0 #14703d}
+.btn.ghost{background:#fff;color:var(--ink);box-shadow:0 5px 0 #c6d9cd,0 10px 20px rgba(0,0,0,.08)}
+.btn.ghost:active{box-shadow:0 1px 0 #c6d9cd}
+.btn.small{padding:8px 16px;font-size:15px;box-shadow:0 3px 0 #c6d9cd}
+:focus-visible{outline:3px solid #0b5fff;outline-offset:3px}
+.chip{display:inline-block;padding:1px 10px;border-radius:999px;color:#fff;font-weight:800;white-space:nowrap}
+.chip.green{background:var(--green)}.chip.blue{background:var(--blue)}.chip.red{background:var(--red)}.chip.black{background:var(--black)}
+.chip.yellow{background:var(--yellow);color:#3b2f00}
+
+/* ---------- intro ---------- */
+#intro{align-items:center;justify-content:center;padding:28px 18px calc(28px + env(safe-area-inset-bottom));text-align:center;gap:14px}
+.logo{font-size:clamp(54px,14vw,84px);line-height:1;animation:float 3s ease-in-out infinite}
+h1{margin:0;font-size:clamp(34px,9vw,60px);line-height:1.05;letter-spacing:-.02em}
+h1 span{color:var(--green)}
+.tag{margin:0;font-weight:700;color:var(--muted);font-size:clamp(15px,4vw,19px)}
+.how{margin:4px 0 0;max-width:560px;font-size:clamp(15px,3.8vw,18px)}
+.legend{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;max-width:880px;margin-top:6px;text-align:left}
+@media(min-width:760px){.legend{grid-template-columns:repeat(5,1fr)}}
+@media(max-width:759px){.legend .lg:last-child:nth-child(odd){grid-column:1/-1}}
+.lg{background:#ffffffd9;border-radius:16px;padding:12px 12px 14px;border-top:8px solid var(--c);box-shadow:0 6px 18px rgba(0,0,0,.07)}
+.lg h3{margin:0 0 4px;font-size:clamp(15px,3.8vw,18px)}
+.lg h3 i{display:inline-block;width:.8em;height:.8em;border-radius:50%;background:var(--c);margin-right:6px;vertical-align:-1px}
+.lg p{margin:0;font-size:clamp(13px,3.3vw,15px);color:var(--muted);line-height:1.35}
+.note{max-width:620px;font-size:14px;color:var(--muted);margin:2px 0 0}
+.best{font-weight:700;color:var(--muted);min-height:1.2em;margin:0}
+#playBtn{margin-top:6px;animation:pulse 1.8s ease-in-out infinite}
+
+/* ---------- game ---------- */
+.hud{display:flex;align-items:center;gap:10px;padding:calc(12px + env(safe-area-inset-top)) 14px 6px}
+.hud .round{font-weight:800;font-size:clamp(15px,4vw,19px)}
+.hud .score{font-weight:800;font-size:clamp(15px,4vw,19px);background:#fff;border-radius:999px;padding:4px 14px;box-shadow:0 3px 10px rgba(0,0,0,.08)}
+.hud .streak{font-weight:800;color:#d9480f;min-width:3.2em}
+.hud .spacer{flex:1}
+.iconbtn{border:0;background:#fff;border-radius:50%;width:40px;height:40px;font-size:19px;box-shadow:0 3px 10px rgba(0,0,0,.1);display:grid;place-items:center}
+.progress{height:10px;margin:4px 14px 0;background:#ffffff99;border-radius:99px;overflow:hidden}
+.progress div{height:100%;width:0;background:linear-gradient(90deg,#4cd48a,var(--green));border-radius:99px;transition:width .4s}
+
+.stage{flex:1;display:grid;place-items:center;position:relative;z-index:5;padding:10px 14px;min-height:260px}
+.stage>*{grid-area:1/1}
+.itemWrap{display:flex;flex-direction:column;align-items:center;gap:14px}
+.item{
+  width:clamp(150px,44vw,210px);background:#fff;border-radius:28px;padding:16px 10px 14px;text-align:center;
+  box-shadow:0 14px 30px rgba(0,0,0,.16),0 0 0 4px #ffffff;
+  touch-action:none;cursor:grab;position:relative;will-change:transform;
+}
+.item.dragging{cursor:grabbing;box-shadow:0 26px 44px rgba(0,0,0,.25),0 0 0 4px #fff;z-index:10}
+.item.pop{animation:pop .45s cubic-bezier(.2,1.4,.4,1)}
+.icon{font-size:clamp(70px,22vw,104px);line-height:1.05;pointer-events:none}
+.icon svg{width:1em;height:1em;display:block;margin:0 auto}
+.iname{font-weight:800;font-size:clamp(16px,4.4vw,20px);margin-top:4px;pointer-events:none}
+.hint{margin:0;color:var(--muted);font-weight:600;font-size:clamp(13px,3.5vw,16px);text-align:center}
+
+.fb{display:none;width:min(440px,100%);background:#fff;border-radius:24px;padding:18px 18px 20px;text-align:center;box-shadow:0 16px 40px rgba(0,0,0,.18);border-top:10px solid var(--green)}
+.fb.show{display:block;animation:pop .4s cubic-bezier(.2,1.4,.4,1)}
+.fb.bad{border-top-color:var(--red)}
+.fb .big{font-size:46px;line-height:1}
+.fb h2{margin:6px 0 6px;font-size:clamp(22px,6vw,28px)}
+.fb p{margin:0 0 6px;font-size:clamp(15px,4vw,17px);line-height:1.4}
+.fb .why{color:var(--muted);font-size:clamp(13.5px,3.6vw,15px)}
+.fb .btn{margin-top:10px;padding:11px 30px}
+
+.bins{display:grid;grid-template-columns:repeat(5,1fr);gap:clamp(6px,1.6vw,20px);padding:18px clamp(8px,3vw,28px) calc(18px + env(safe-area-inset-bottom));position:relative;z-index:1}
+.bin{
+  position:relative;border:0;background:none;padding:0;color:#fff;
+  height:clamp(120px,26vh,230px);display:flex;flex-direction:column;
+  transition:transform .15s,filter .15s;
+}
+.bin .lid{
+  height:17%;background:var(--c);filter:brightness(1.14);border-radius:10px 10px 4px 4px;margin:0 -4%;
+  transform-origin:2% 100%;transition:transform .25s;position:relative;box-shadow:0 3px 0 rgba(0,0,0,.2);z-index:2;
+}
+.bin .lid::before{
+  content:"";position:absolute;left:50%;top:-42%;width:28%;height:46%;transform:translateX(-50%);
+  border:5px solid var(--c);border-bottom:0;border-radius:12px 12px 0 0;filter:brightness(.85);
+}
+.bin .body{
+  flex:1;display:grid;place-items:center;text-align:center;
+  background-color:var(--c);
+  background-image:linear-gradient(90deg,transparent 0 28%,rgba(255,255,255,.14) 28% 33%,transparent 33% 67%,rgba(255,255,255,.14) 67% 72%,transparent 72%);
+  clip-path:polygon(0 0,100% 0,91% 100%,9% 100%);border-radius:0 0 16px 16px;
+  font-weight:900;font-size:clamp(10px,2.9vw,22px);letter-spacing:.02em;text-shadow:0 2px 0 rgba(0,0,0,.25);
+}
+.bin[data-bin="yellow"]{color:#3b2f00}
+.bin[data-bin="yellow"] .body{text-shadow:none}
+.bin.hover,.bin:hover{transform:translateY(-4px) scale(1.04)}
+.bin.hover .lid,.bin.open .lid{transform:rotate(-26deg)}
+.bin.hover{filter:drop-shadow(0 0 14px rgba(255,255,255,.95)) drop-shadow(0 0 4px rgba(0,0,0,.25))}
+.bin.right{animation:bounce .5s}
+.bin.wrong{animation:shake .5s}
+.bin.right::after,.bin.wrong::after,.bin.reveal::after{
+  position:absolute;top:-6px;right:-4px;z-index:5;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
+  font-weight:900;font-size:20px;background:#fff;box-shadow:0 3px 10px rgba(0,0,0,.3);animation:pop .4s cubic-bezier(.2,1.4,.4,1);
+}
+.bin.right::after,.bin.reveal::after{content:"✓";color:var(--green)}
+.bin.wrong::after{content:"✗";color:var(--red)}
+.bin.reveal{filter:drop-shadow(0 0 12px #fff) drop-shadow(0 0 6px var(--gold))}
+
+/* ---------- end ---------- */
+#end{align-items:center;justify-content:center;text-align:center;padding:26px 18px calc(26px + env(safe-area-inset-bottom));gap:10px}
+.trophy{font-size:clamp(60px,16vw,96px);line-height:1;animation:float 3s ease-in-out infinite}
+.final{font-size:clamp(60px,18vw,110px);font-weight:900;line-height:1;color:var(--green);letter-spacing:-.03em}
+.final small{font-size:.38em;color:var(--muted);font-weight:800}
+#endTitle{margin:0;font-size:clamp(24px,6.5vw,38px)}
+#endMsg{margin:0;max-width:520px;font-size:clamp(15px,4vw,18px);color:var(--muted)}
+.miss{width:100%;max-width:560px;background:#ffffffd9;border-radius:18px;padding:12px 14px;text-align:left;margin-top:6px;box-shadow:0 6px 18px rgba(0,0,0,.07)}
+.miss h3{margin:0 0 8px;font-size:16px}
+.miss ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.miss li{display:flex;align-items:center;gap:10px;font-size:15px;line-height:1.3}
+.miss .e{font-size:26px;width:34px;text-align:center;flex:none}
+.miss .e svg{width:1em;height:1em;display:block}
+.actions{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:8px}
+
+/* ---------- modal (Cheat Sheet Only) ---------- */
+.modal{position:fixed;inset:0;background:rgba(10,30,18,.55);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
+.modal.show{display:flex}
+.sheet{background:#f6fdf9;border-radius:22px;max-width:520px;width:100%;max-height:90dvh;overflow:auto;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.sheet h2{margin:0 0 10px}
+.sheet .legend{grid-template-columns:1fr;margin:0 0 14px}
+
+/* ---------- register ---------- */
+input{-webkit-user-select:text;user-select:text}
+#register{align-items:center;justify-content:center;padding:28px 18px calc(28px + env(safe-area-inset-bottom));text-align:center;gap:14px}
+.card{width:min(440px,100%);background:#fff;border-radius:24px;padding:20px 18px 22px;box-shadow:0 16px 40px rgba(0,0,0,.14);text-align:left;display:grid;gap:12px}
+.card label{display:grid;gap:5px;font-weight:800;font-size:15px}
+.card input{font:inherit;font-size:16px;font-weight:600;padding:12px 14px;border:2px solid #cfe3d6;border-radius:14px;background:#f8fdfa;color:var(--ink);width:100%}
+.card input:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(31,157,85,.2)}
+.card input.bad{border-color:var(--red)}
+.err{margin:0;min-height:1.2em;color:var(--red);font-weight:700;font-size:14px}
+.fine{margin:0;font-size:13px;color:var(--muted)}
+.row2{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+
+/* ---------- Permanent Leaderboard ---------- */
+#persistentBoard{
+  width: min(520px, 100%);
+  margin: 28px auto 0;
+  background: #f6fdf9;
+  border-radius: 22px;
+  padding: 18px 20px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.08);
+  border: 4px solid #fff;
+  text-align: left;
+}
+.stat{font-weight:800;color:var(--muted);margin:0;min-height:1.2em}
+.live{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);font-weight:700;margin:0 0 10px}
+.live i{flex:none;width:9px;height:9px;border-radius:50%;background:var(--green);animation:blink 1.6s ease-in-out infinite}
+.board{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.board li{display:grid;grid-template-columns:2.2em 1fr auto;align-items:center;gap:8px;background:#fff;border-radius:14px;padding:8px 12px;font-size:15px;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.board li.me{outline:3px solid var(--gold);background:#fffbe6}
+.board li.empty{display:block;background:none;box-shadow:none;text-align:center;color:var(--muted);font-weight:600;padding:14px 0}
+.board .rk{font-weight:900;text-align:center;font-size:18px}
+.board .who{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:800}
+.board .who small{display:block;font-weight:600;color:var(--muted);font-size:12.5px}
+.board .sc{font-weight:900;text-align:right;line-height:1.15}
+.board .sc small{display:block;font-weight:600;color:var(--muted);font-size:12px}
+
+/* ---------- Admin Dashboard ---------- */
+#admin { padding:28px 18px; align-items:center; }
+.admin-card { width:100%; max-width:800px; background:#fff; border-radius:24px; padding:20px; box-shadow:0 16px 40px rgba(0,0,0,.14); overflow-x:auto;}
+.admin-table { width:100%; border-collapse:collapse; margin-top:20px; font-size:15px; text-align:left; }
+.admin-table th, .admin-table td { padding:12px 10px; border-bottom:1px solid #cfe3d6; }
+.admin-table th { background:#eafaf0; font-weight:800; color:var(--green); }
+.admin-table tr:hover { background-color: #f8fdfa; }
+.del-btn:hover { background: #fee2e2 !important; border-radius: 6px; }
+
+@keyframes blink{50%{opacity:.25}}
+@keyframes fall{to{transform:translateY(112vh) rotate(540deg);opacity:.9}}
+@keyframes float{50%{transform:translateY(-8px)}}
+@keyframes pulse{50%{transform:scale(1.05)}}
+@keyframes pop{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}
+@keyframes bounce{40%{transform:translateY(-14px)}70%{transform:translateY(0)}85%{transform:translateY(-5px)}}
+@keyframes shake{20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-6px)}80%{transform:translateX(6px)}}
+@media (max-height:620px){.bin{height:110px}.stage{min-height:200px}.icon{font-size:64px}.item{width:130px}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- INTRO -->
+  <section id="intro" class="screen active">
+    <div class="logo">♻️</div>
+    <h1>Sort It <span>Right!</span></h1>
+    <p class="tag">Ward 11Aa · Model of Responsible Living 💚♻️</p>
+    <p class="how"><b>10 rounds.</b> One piece of waste each round. Drag it into the correct bin (or just tap a bin). Learn the five bins below first!</p>
+    <div class="legend" id="introLegend"></div>
+    <p class="note">Under the new rules, sanitation workers can refuse collection if waste isn't properly segregated at source.</p>
+    <p class="best" id="bestLine"></p>
+    <button class="btn" id="playBtn">▶ Play</button>
+    <p class="stat" id="statLine"></p>
+  </section>
+
+  <!-- REGISTER -->
+  <section id="register" class="screen">
+    <div class="logo">👋</div>
+    <h1 style="font-size:clamp(28px,7.5vw,44px)">Who's playing?</h1>
+    <p class="tag">Enter your details to join the Ward 11A leaderboard</p>
+    <form class="card" id="regForm" autocomplete="off" novalidate>
+      <label>Your name
+        <input id="nameIn" type="text" maxlength="40" placeholder="e.g. Priya Sharma" autocomplete="name" enterkeyhint="next">
+      </label>
+      <label>House number
+        <input id="houseIn" type="text" maxlength="12" placeholder="e.g. A-24 or 302" autocomplete="off" enterkeyhint="go">
+      </label>
+      <p class="err" id="regErr" role="alert"></p>
+      <p class="fine">Your name and house number are collected for the ward leaderboard.</p>
+      <div class="row2">
+        <button type="button" class="btn ghost small" id="regBack">← Back</button>
+        <button type="submit" class="btn" id="regGo">Start game ▶</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- ADMIN DASHBOARD -->
+  <section id="admin" class="screen">
+    <div class="hud" style="justify-content: flex-start; width: 100%; max-width: 800px;">
+      <button class="btn ghost small" id="adminBack">← Back</button>
+    </div>
+    <div class="logo" style="animation:none;">🛠️</div>
+    <h2 style="margin: 0 0 14px 0;">Admin Dashboard</h2>
+    <div class="admin-card">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>House</th>
+            <th>Score</th>
+            <th>Attempts</th>
+            <th style="text-align:center;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="adminTableBody">
+          <tr><td colspan="5" style="text-align:center;">Loading records...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- GAME -->
+  <section id="game" class="screen">
+    <div class="hud">
+      <div class="round" id="roundLbl">Round 1 / 10</div>
+      <div class="streak" id="streakLbl"></div>
+      <div class="spacer"></div>
+      <div class="score" id="scoreLbl">Score 0</div>
+      <button class="iconbtn" id="helpBtn" aria-label="Show bin cheat sheet" title="Cheat sheet">💡</button>
+      <button class="iconbtn" id="muteBtn" aria-label="Toggle sound" title="Sound">🔊</button>
+    </div>
+    <div class="progress"><div id="bar"></div></div>
+
+    <div class="stage">
+      <div class="itemWrap" id="itemWrap">
+        <div class="item" id="item" role="img" aria-label="Piece of waste">
+          <div class="icon" id="icon"></div>
+          <div class="iname" id="iname"></div>
+        </div>
+        <p class="hint">Drag it to the right bin — or tap a bin (keys 1–5)</p>
+      </div>
+      <div class="fb" id="fb" role="status" aria-live="polite">
+        <div class="big" id="fbEmoji"></div>
+        <h2 id="fbTitle"></h2>
+        <p id="fbText"></p>
+        <p class="why" id="fbWhy"></p>
+        <button class="btn" id="nextBtn">Next ▶</button>
+      </div>
+    </div>
+
+    <div class="bins" id="bins"></div>
+  </section>
+
+  <!-- END -->
+  <section id="end" class="screen">
+    <div class="trophy" id="trophy">🏆</div>
+    <div class="final"><span id="finalNum">0</span><small> / 10</small></div>
+    <h2 id="endTitle"></h2>
+    <p id="endMsg"></p>
+    <div class="miss" id="miss" hidden>
+      <h3>Let's review these:</h3>
+      <ul id="missList"></ul>
+    </div>
+    <p class="best" id="endBest"></p>
+    <p class="best" id="saveLine"></p>
+    <button class="btn small ghost" id="retryBtn" hidden>↻ Retry saving</button>
+    <div class="actions">
+      <button class="btn" id="againBtn">↻ Play again</button>
+      <button class="btn ghost" id="shareBtn">📤 Share score</button>
+      <button class="btn ghost small" id="changeBtn">👤 Change player</button>
+    </div>
+  </section>
+
+  <!-- CHEAT SHEET MODAL -->
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Bin cheat sheet">
+    <div class="sheet">
+      <h2>🗑️ Which bin?</h2>
+      <div class="legend" id="modalLegend"></div>
+      <button class="btn small ghost" id="closeModal">Got it</button>
+    </div>
+  </div>
+
+  <!-- PERSISTENT LEADERBOARD (Moved dynamically) -->
+  <div id="persistentBoard" style="display: none;">
+    <h2 style="margin-top:0">🏆 Leaderboard</h2>
+    <p class="live"><i></i><span id="liveTxt">Loading...</span></p>
+    <ol class="board" id="boardList"></ol>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================
+   1. FIREBASE SETUP
+========================================= */
+// TODO: Replace with your actual Firebase project config
+const firebaseConfig = {
+  apiKey: "AIzaSyAR2PGyht8NUrruNfRB-KSbKrK1AET_PIk",
+  authDomain: "sort-it-right-ff3e9.firebaseapp.com",
+  projectId: "sort-it-right-ff3e9",
+  storageBucket: "sort-it-right-ff3e9.firebasestorage.app",
+  messagingSenderId: "641232839347",
+  appId: "1:641232839347:web:b7465a2fc2e7acd16746c6",
+  measurementId: "G-1DRBQJ0CY5"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// ---------------------------------------------------------
+
+const ROUNDS = 10;
+const BOARD_REFRESH_MS = 15000;
+const ORDER = ["green", "blue", "red", "black", "yellow"];
+const BINS = {
+  green:  { name: "Green",  kind: "Wet waste",      bin: "Green bin",  info: "Food leftovers, fruit & vegetable peels, flowers, tea leaves" },
+  blue:   { name: "Blue",   kind: "Dry waste",      bin: "Blue bin",   info: "Plastic, paper, glass, metal, wood, rubber" },
+  red:    { name: "Red",    kind: "Sanitary waste", bin: "Red bin",    info: "Diapers, sanitary pads, tampons" },
+  black:  { name: "Black",  kind: "Hazardous / special-care waste", bin: "Black bin", info: "Bulbs, medicines, paint" },
+  yellow: { name: "Yellow", kind: "E-waste",        bin: "Yellow bin", info: "Old mobile phones, chargers, Batteries, earphones, laptops and other electronics" }
+};
+
+const SVG_PAD = '<svg viewBox="0 0 100 100"><g transform="rotate(-30 50 50)"><path d="M40 8h20a8 8 0 0 1 8 8v22l14 8v18l-14 8v12a8 8 0 0 1-8 8H40a8 8 0 0 1-8-8V64l-14-8V46l14-8V16a8 8 0 0 1 8-8z" fill="#fff" stroke="#e0709a" stroke-width="3"/><rect x="42" y="18" width="16" height="64" rx="8" fill="#f9c6d8"/></g></svg>';
+const SVG_TAMPON = '<svg viewBox="0 0 100 100"><g transform="rotate(35 50 50)"><rect x="39" y="10" width="22" height="52" rx="11" fill="#fff" stroke="#e0709a" stroke-width="3"/><rect x="44" y="62" width="12" height="14" rx="3" fill="#f9c6d8" stroke="#e0709a" stroke-width="2"/><path d="M50 76q-9 8 0 18" stroke="#e0709a" stroke-width="3" fill="none" stroke-linecap="round"/></g></svg>';
+const SVG_DIAPER = '<svg viewBox="0 0 100 100"><path d="M8 28h84v14q0 30-22 42-8 4-20 4t-20-4Q8 72 8 42z" fill="#fff" stroke="#5b9fe3" stroke-width="3"/><rect x="8" y="28" width="84" height="10" fill="#bfe0ff"/><rect x="17" y="30" width="13" height="6" rx="2" fill="#5b9fe3"/><rect x="70" y="30" width="13" height="6" rx="2" fill="#5b9fe3"/><path d="M38 56q12 10 24 0" stroke="#bfe0ff" stroke-width="5" fill="none" stroke-linecap="round"/></svg>';
+
+const ITEMS = [
+  { n: "Banana peel",       i: "🍌", b: "green", w: "Fruit and vegetable peels are biodegradable kitchen waste." },
+  { n: "Apple core",        i: "🍎", b: "green", w: "Leftover fruit is wet, biodegradable waste." },
+  { n: "Carrot peels",      i: "🥕", b: "green", w: "Vegetable scraps are wet waste that can become compost." },
+  { n: "Leftover rice",     i: "🍚", b: "green", w: "Cooked food leftovers go with wet waste." },
+  { n: "Eggshells",         i: "🥚", b: "green", w: "Eggshells are kitchen waste and go in the wet bin." },
+  { n: "Fallen flowers",    i: "🌸", b: "green", w: "Flowers and garlands are biodegradable wet waste." },
+  { n: "Stale bread",       i: "🍞", b: "green", w: "Spoiled or stale food is wet waste." },
+  { n: "Used tea leaves",   i: "🍵", b: "green", w: "Tea leaves are biodegradable kitchen waste." },
+  { n: "Watermelon rind",   i: "🍉", b: "green", w: "Fruit rinds are wet waste." },
+  { n: "Mango peel",        i: "🥭", b: "green", w: "Fruit peels are wet waste." },
+  { n: "Empty shampoo bottle", i: "🧴", b: "blue", w: "Plastic is dry, recyclable waste." },
+  { n: "Old newspaper",     i: "📰", b: "blue", w: "Paper is dry waste and can be recycled." },
+  { n: "Empty tin can",     i: "🥫", b: "blue", w: "Metal is dry, recyclable waste." },
+  { n: "Empty glass bottle",i: "🍾", b: "blue", w: "Glass is dry, recyclable waste." },
+  { n: "Cardboard box",     i: "📦", b: "blue", w: "Cardboard and paper go in the dry bin." },
+  { n: "Plastic carry bag", i: "🛍️", b: "blue", w: "Plastic bags are dry waste." },
+  { n: "Wooden plank",      i: "🪵", b: "blue", w: "Wood is part of dry waste." },
+  { n: "Old notebook",      i: "📓", b: "blue", w: "Paper is dry waste." },
+  { n: "Empty juice carton",i: "🧃", b: "blue", w: "Cartons and packaging are dry waste." },
+  { n: "Used baby diaper",  s: SVG_DIAPER, b: "red", w: "Diapers are sanitary waste — wrap them and use the red bin." },
+  { n: "Sanitary pad",      s: SVG_PAD,    b: "red", w: "Sanitary napkins are sanitary waste — wrap before disposal." },
+  { n: "Used tampon",       s: SVG_TAMPON, b: "red", w: "Hygiene products belong in the red sanitary bin." },
+  { n: "Fused bulb",        i: "💡", b: "black", w: "Bulbs are domestic hazardous waste and need special handling." },
+  { n: "Expired medicines", i: "💊", b: "black", w: "Old medicines are hazardous — never mix them with other waste." },
+  { n: "Dead battery",      i: "🔋", b: "yellow", w: "Batteries contain harmful chemicals and go in the yellow bin." },
+  { n: "Leftover paint",    i: "🎨", b: "black", w: "Paint is hazardous special-care waste." },
+  { n: "Old mobile phone",  i: "📱", b: "yellow", w: "Electronics are e-waste and go in the yellow bin." },
+  { n: "Broken earphones",  i: "🎧", b: "yellow", w: "Small electronics count as e-waste." },
+  { n: "Damaged charger",   i: "🔌", b: "yellow", w: "Chargers and cables are e-waste." },
+  { n: "Old laptop",        i: "💻", b: "yellow", w: "Computers and laptops are e-waste." },
+  { n: "Broken computer mouse", i: "🖱️", b: "yellow", w: "Computer accessories are e-waste." }
+];
+
+/* ---------- helpers ---------- */
+const $ = (s) => document.querySelector(s);
+const screens = { intro: $("#intro"), register: $("#register"), game: $("#game"), end: $("#end"), admin: $("#admin") };
+const itemEl = $("#item"), iconEl = $("#icon"), inameEl = $("#iname"), wrapEl = $("#itemWrap");
+const fbEl = $("#fb"), binsEl = $("#bins");
+let binEls = [];
+
+function shuffle(a) {
+  a = a.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function iconHTML(it) { return it.s ? it.s : it.i; }
+function setIcon(el, it) { if (it.s) el.innerHTML = it.s; else el.textContent = it.i; }
+function chip(key) { return '<span class="chip ' + key + '">' + BINS[key].bin + "</span>"; }
+
+function renderLegend(el) {
+  el.innerHTML = ORDER.map((k) =>
+    '<div class="lg" style="--c:var(--' + k + ')"><h3><i></i>' + BINS[k].name + " · " + BINS[k].kind +
+    "</h3><p>" + BINS[k].info + "</p></div>").join("");
+}
+
+function pickRounds() {
+  let chosen = [];
+  ORDER.forEach((k) => {
+    chosen = chosen.concat(shuffle(ITEMS.filter((x) => x.b === k)).slice(0, 2));
+  });
+  const rest = shuffle(ITEMS.filter((x) => !chosen.includes(x)));
+  chosen = chosen.concat(rest.slice(0, ROUNDS - chosen.length));
+  return shuffle(chosen);
+}
+
+/* ---------- storage / sound ---------- */
+let muted = false, actx = null;
+function getBest() { try { return parseInt(localStorage.getItem("w11aa_best"), 10); } catch (e) { return NaN; } }
+function setBest(v) { try { localStorage.setItem("w11aa_best", String(v)); } catch (e) {} }
+
+function tone(freqs, dur, type) {
+  if (muted) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const t0 = actx.currentTime;
+    freqs.forEach((f, i) => {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = type || "sine"; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t0 + i * dur);
+      g.gain.exponentialRampToValueAtTime(0.2, t0 + i * dur + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + (i + 1) * dur);
+      o.connect(g); g.connect(actx.destination);
+      o.start(t0 + i * dur); o.stop(t0 + (i + 1) * dur + 0.03);
+    });
+  } catch (e) {}
+}
+
+/* ---------- state ---------- */
+let queue = [], idx = 0, score = 0, streak = 0, cur = null, locked = true, log = [];
+let tx = 0, ty = 0, drag = null, feedbackTimer = null;
+
+// The central navigation function handles moving the persistent leaderboard
+function show(name) {
+  Object.keys(screens).forEach((k) => screens[k].classList.toggle("active", k === name));
+  window.scrollTo(0, 0);
+
+  const boardEl = $("#persistentBoard");
+  // If we are on the Intro or End screens, attach and show the leaderboard
+  if (name === "intro" || name === "end") {
+    screens[name].appendChild(boardEl);
+    boardEl.style.display = "block";
+    refreshBoard();
+    if (!boardTimer) boardTimer = setInterval(() => { if (!document.hidden) refreshBoard(); }, BOARD_REFRESH_MS);
+  } else {
+    // Hide and stop fetching for other screens (game, admin, register)
+    boardEl.style.display = "none";
+    clearInterval(boardTimer);
+    boardTimer = null;
+  }
+}
+
+function buildBins() {
+  binsEl.innerHTML = ORDER.map((k, n) =>
+    '<button class="bin" data-bin="' + k + '" style="--c:var(--' + k + ')" aria-label="' + BINS[k].name + ' bin (key ' + (n + 1) + ')">' +
+    '<div class="lid"></div><div class="body">' + BINS[k].name.toUpperCase() + "</div></button>").join("");
+  binEls = Array.from(binsEl.querySelectorAll(".bin"));
+  binEls.forEach((b) => b.addEventListener("click", () => answer(b.dataset.bin)));
+}
+
+function startGame() {
+  queue = pickRounds(); idx = 0; score = 0; streak = 0; log = [];
+  gameId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  gameStart = Date.now();
+  show("game");
+  loadRound();
+}
+
+function updateHud() {
+  $("#roundLbl").textContent = "Round " + Math.min(idx + 1, ROUNDS) + " / " + ROUNDS;
+  $("#scoreLbl").textContent = "Score " + score;
+  $("#streakLbl").textContent = streak >= 2 ? "🔥 " + streak : "";
+  $("#bar").style.width = (idx / ROUNDS) * 100 + "%";
+}
+
+function loadRound() {
+  clearTimeout(feedbackTimer);
+  cur = queue[idx];
+  locked = false;
+  binEls.forEach((b) => b.classList.remove("hover", "open", "right", "wrong", "reveal"));
+  fbEl.classList.remove("show", "bad");
+  wrapEl.style.visibility = "visible";
+  tx = 0; ty = 0;
+  itemEl.style.transition = "none";
+  itemEl.style.opacity = "1";
+  itemEl.style.transform = "";
+  itemEl.classList.remove("dragging", "pop");
+  void itemEl.offsetWidth;
+  itemEl.classList.add("pop");
+  setIcon(iconEl, cur);
+  inameEl.textContent = cur.n;
+  itemEl.setAttribute("aria-label", cur.n);
+  updateHud();
+}
+
+/* ---------- drag & drop ---------- */
+function applyT(scale, rot) {
+  itemEl.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + (scale || 1) + ") rotate(" + (rot || 0) + "deg)";
+}
+function binAt(x, y) {
+  const pad = 10;
+  for (const b of binEls) {
+    const r = b.getBoundingClientRect();
+    if (x >= r.left - pad && x <= r.right + pad && y >= r.top - pad && y <= r.bottom + pad) return b.dataset.bin;
+  }
+  return null;
+}
+function hoverBin(key) { binEls.forEach((b) => b.classList.toggle("hover", b.dataset.bin === key)); }
+
+itemEl.addEventListener("pointerdown", (e) => {
+  if (locked) return;
+  drag = { id: e.pointerId, sx: e.clientX - tx, sy: e.clientY - ty };
+  try { itemEl.setPointerCapture(e.pointerId); } catch (err) {}
+  itemEl.classList.add("dragging");
+  itemEl.style.transition = "none";
+  applyT(1.08, 0);
+});
+itemEl.addEventListener("pointermove", (e) => {
+  if (!drag || e.pointerId !== drag.id) return;
+  tx = e.clientX - drag.sx; ty = e.clientY - drag.sy;
+  applyT(1.08, Math.max(-12, Math.min(12, tx / 18)));
+  hoverBin(binAt(e.clientX, e.clientY));
+});
+function endDrag(e, cancelled) {
+  if (!drag || e.pointerId !== drag.id) return;
+  drag = null;
+  itemEl.classList.remove("dragging");
+  const key = cancelled ? null : binAt(e.clientX, e.clientY);
+  hoverBin(null);
+  if (key) { answer(key); return; }
+  itemEl.style.transition = "transform .25s cubic-bezier(.2,1.3,.4,1)";
+  tx = 0; ty = 0; applyT(1, 0);
+}
+itemEl.addEventListener("pointerup", (e) => endDrag(e, false));
+itemEl.addEventListener("pointercancel", (e) => endDrag(e, true));
+itemEl.addEventListener("contextmenu", (e) => e.preventDefault());
+itemEl.addEventListener("dragstart", (e) => e.preventDefault());
+
+function flyTo(key) {
+  const b = binEls.find((x) => x.dataset.bin === key);
+  const br = b.getBoundingClientRect(), r = itemEl.getBoundingClientRect();
+  tx += br.left + br.width / 2 - (r.left + r.width / 2);
+  ty += br.top + br.height * 0.2 - (r.top + r.height / 2);
+  itemEl.style.transition = "transform .45s cubic-bezier(.5,0,.75,.4), opacity .45s ease-in";
+  applyT(0.22, 25);
+  itemEl.style.opacity = "0";
+}
+
+/* ---------- answering ---------- */
+function answer(key) {
+  if (locked || !cur) return;
+  locked = true;
+  drag = null;
+  hoverBin(null);
+  const ok = key === cur.b;
+  const chosenEl = binEls.find((b) => b.dataset.bin === key);
+  const rightEl = binEls.find((b) => b.dataset.bin === cur.b);
+
+  flyTo(key);
+  chosenEl.classList.add("open");
+
+  if (ok) { score++; streak++; } else { streak = 0; }
+  log.push({ it: cur, chosen: key, ok: ok });
+  $("#scoreLbl").textContent = "Score " + score;
+  $("#streakLbl").textContent = streak >= 2 ? "🔥 " + streak : "";
+  $("#bar").style.width = ((idx + 1) / ROUNDS) * 100 + "%";
+
+  feedbackTimer = setTimeout(() => {
+    chosenEl.classList.remove("open");
+    chosenEl.classList.add(ok ? "right" : "wrong");
+    if (!ok) rightEl.classList.add("reveal");
+    tone(ok ? [660, 880] : [220, 160], ok ? 0.11 : 0.18, ok ? "sine" : "sawtooth");
+    if (!ok && navigator.vibrate) { try { navigator.vibrate(160); } catch (e) {} }
+
+    wrapEl.style.visibility = "hidden";
+    fbEl.classList.toggle("bad", !ok);
+    $("#fbEmoji").textContent = ok ? "✅" : "❌";
+    $("#fbTitle").textContent = ok ? (streak >= 3 ? "Awesome! " + streak + " in a row!" : "Correct!") : "Not quite!";
+    $("#fbText").innerHTML = ok
+      ? "<b>" + cur.n + "</b> goes in the " + chip(cur.b) + " — " + BINS[cur.b].kind.toLowerCase() + "."
+      : "<b>" + cur.n + "</b> belongs in the " + chip(cur.b) + " (" + BINS[cur.b].kind.toLowerCase() + "), not the " + chip(key) + ".";
+    $("#fbWhy").textContent = cur.w;
+    $("#nextBtn").textContent = idx === ROUNDS - 1 ? "See my score 🏁" : "Next ▶";
+    fbEl.classList.add("show");
+    $("#nextBtn").focus({ preventScroll: true });
+  }, 470);
+}
+
+function nextRound() {
+  idx++;
+  if (idx >= ROUNDS) endGame(); else loadRound();
+}
+
+/* ---------- end screen ---------- */
+function endGame() {
+  show("end");
+  locked = true;
+  const t = score >= 10 ? ["🏆", "Ward 11Aa Champion!", "Perfect segregation! You're a true model of responsible living — the sanitation workers would salute you. 💚"]
+        : score >= 8  ? ["🌟", "Segregation Star!", "Excellent sorting! Just a little more practice and you'll be perfect."]
+        : score >= 6  ? ["🌱", "Getting Greener!", "Good effort! Check the cheat sheet and try for a higher score."]
+        : score >= 4  ? ["♻️", "Keep Learning!", "Wet, dry, sanitary, hazardous, e-waste — one more round and it'll click."]
+        :               ["🗑️", "Needs Another Round", "No worries — peek at the bin guide and try again. Every sorted item helps!"];
+  $("#trophy").textContent = t[0];
+  $("#endTitle").textContent = t[1];
+  $("#endMsg").textContent = t[2];
+  $("#finalNum").textContent = score;
+
+  const wrong = log.filter((l) => !l.ok);
+  $("#miss").hidden = wrong.length === 0;
+  $("#missList").innerHTML = wrong.map((l) =>
+    '<li><span class="e">' + iconHTML(l.it) + "</span><span><b>" + l.it.n + "</b> → " + chip(l.it.b) + "</span></li>").join("");
+
+  const prev = getBest();
+  let line = "";
+  if (isNaN(prev) || score > prev) {
+    setBest(score);
+    line = (isNaN(prev) || prev === 0) ? "" : "🎉 New personal best!";
+  } else {
+    line = "Your best: " + prev + " / " + ROUNDS;
+  }
+  $("#endBest").textContent = line;
+
+  if (score >= 8) confetti();
+  tone(score >= 8 ? [523, 659, 784, 1047] : [440, 392], 0.14, "triangle");
+
+  pending = { name: player.name, house: player.house, score: score, seconds: Math.round((Date.now() - gameStart) / 1000) };
+  sendScore();
+}
+
+function confetti() {
+  const bits = ["💚", "♻️", "🌿", "⭐", "🍃"];
+  for (let i = 0; i < 44; i++) {
+    const s = document.createElement("span");
+    s.className = "confetti";
+    s.textContent = bits[i % bits.length];
+    s.style.left = Math.random() * 100 + "vw";
+    s.style.animationDuration = 2.6 + Math.random() * 2.6 + "s";
+    s.style.animationDelay = Math.random() * 1.2 + "s";
+    s.style.fontSize = 18 + Math.random() * 20 + "px";
+    document.body.appendChild(s);
+    setTimeout(() => s.remove(), 7000);
+  }
+}
+
+/* ---------- player, API & leaderboard ---------- */
+let player = null, gameId = "", gameStart = 0, pending = null, boardTimer = null;
+
+function loadPlayer() {
+  try { const p = JSON.parse(localStorage.getItem("w11a_player")); return p && p.name && p.house ? p : null; } catch (e) { return null; }
+}
+function savePlayer(p) { try { localStorage.setItem("w11a_player", JSON.stringify(p)); } catch (e) {} }
+function clean(s, max) { return String(s || "").replace(/\s+/g, " ").trim().slice(0, max); }
+function mk(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+}
+
+/* registration & admin redirect */
+function showRegister() {
+  const p = player || loadPlayer() || {};
+  $("#nameIn").value = p.name || "";
+  $("#houseIn").value = p.house || "";
+  $("#regErr").textContent = "";
+  $("#nameIn").classList.remove("bad");
+  $("#houseIn").classList.remove("bad");
+  show("register");
+  setTimeout(() => { try { (p.name ? $("#regGo") : $("#nameIn")).focus({ preventScroll: true }); } catch (e) {} }, 50);
+}
+
+$("#regForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const name = clean($("#nameIn").value, 40), house = clean($("#houseIn").value, 12);
+  
+  // ADMIN DASHBOARD CONDITION
+  if (name.toLowerCase() === "admin" && house === "13") {
+     loadAdminDashboard();
+     return;
+  }
+
+  const nOk = name.length >= 2, hOk = house.length >= 1;
+  $("#nameIn").classList.toggle("bad", !nOk);
+  $("#houseIn").classList.toggle("bad", !hOk);
+  if (!nOk || !hOk) {
+    $("#regErr").textContent = !nOk ? "Please enter your name (at least 2 letters)." : "Please enter your house number.";
+    return;
+  }
+  player = { name: name, house: house };
+  savePlayer(player);
+  tone([523, 659], 0.09);
+  startGame();
+});
+
+/* ---------- Firebase Leaderboard Logic ---------- */
+
+// Save Score to Firestore
+async function sendScore() {
+  const mine = pending, line = $("#saveLine"), retry = $("#retryBtn");
+  retry.hidden = true;
+  if (!mine) { line.textContent = ""; return; }
+  line.textContent = "Saving your score to leaderboard…";
+  
+  try {
+    // Generate a unique ID per player based on name and house 
+    const docId = (mine.name + "_" + mine.house).toLowerCase().replace(/[^a-z0-9_]/g, '');
+    const playerRef = db.collection("players").doc(docId);
+
+    await db.runTransaction(async (transaction) => {
+      const doc = await transaction.get(playerRef);
+      if (!doc.exists) {
+        transaction.set(playerRef, {
+          name: mine.name,
+          house: mine.house,
+          bestScore: mine.score,
+          bestTime: mine.seconds,
+          attempts: 1,
+          lastPlayed: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      } else {
+        const d = doc.data();
+        let newScore = d.bestScore;
+        let newTime = d.bestTime;
+        
+        // Update best score or beat the time
+        if (mine.score > d.bestScore || (mine.score === d.bestScore && mine.seconds < d.bestTime)) {
+          newScore = mine.score;
+          newTime = mine.seconds;
+        }
+
+        transaction.update(playerRef, {
+          bestScore: newScore,
+          bestTime: newTime,
+          attempts: (d.attempts || 0) + 1,
+          lastPlayed: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+    });
+
+    if (pending === mine) {
+       pending = null;
+       line.textContent = "✅ Saved to Leaderboard!";
+       refreshBoard(); // Update the board immediately once saved
+    }
+  } catch (e) {
+    console.error(e);
+    if (pending === mine) {
+      line.textContent = "⚠️ Couldn't save your score — check your internet.";
+      retry.hidden = false;
+    }
+  }
+}
+
+// Render Leaderboard list
+function medal(r) { return r === 1 ? "🥇" : r === 2 ? "🥈" : r === 3 ? "🥉" : String(r); }
+function setBoardMsg(t) { $("#boardList").replaceChildren(mk("li", "empty", t)); }
+
+function renderBoard(rows) {
+  if (!rows.length) { setBoardMsg("No scores yet — be the first! 🌱"); return; }
+  $("#boardList").replaceChildren.apply($("#boardList"), rows.map((r) => {
+    const li = mk("li");
+    const mine = player && String(r.name).toLowerCase() === player.name.toLowerCase() &&
+      (r.house == null || String(r.house).toLowerCase() === player.house.toLowerCase());
+    if (mine) li.className = "me";
+    const who = mk("span", "who", r.name);
+    if (r.house) who.appendChild(mk("small", "", "House " + r.house));
+    const sc = mk("span", "sc", r.score + "/" + ROUNDS);
+    sc.appendChild(mk("small", "", r.seconds + "s"));
+    li.append(mk("span", "rk", medal(r.rank)), who, sc);
+    return li;
+  }));
+}
+
+// Fetch Leaderboard from Firestore (Tie-breaker handled in JS)
+async function refreshBoard() {
+  const live = $("#liveTxt");
+  try {
+    // Only query by bestScore so it loads instantly without needing a Composite Index
+    const snap = await db.collection("players")
+        .orderBy("bestScore", "desc")
+        .limit(50)
+        .get();
+        
+    let board = [];
+    snap.forEach(doc => {
+       const d = doc.data();
+       board.push({ name: d.name, house: d.house, score: d.bestScore, seconds: d.bestTime });
+    });
+
+    // Handle the tie-breaker in JavaScript (fastest time wins if scores are tied)
+    board.sort((a, b) => {
+       if (b.score === a.score) return a.seconds - b.seconds;
+       return 0;
+    });
+
+    // Assign ranks after sorting
+    board.forEach((p, index) => {
+      p.rank = index + 1;
+    });
+
+    live.textContent = "Live · " + board.length + (board.length === 1 ? " player" : " players") + " · updated " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    renderBoard(board);
+    
+  } catch (e) {
+    console.error("Leaderboard Error:", e);
+    live.textContent = "Couldn't refresh — retrying…";
+  }
+}
+
+// Fetch player counts on Intro
+async function refreshStats() {
+  const el = $("#statLine");
+  try {
+    const snap = await db.collection("players").get(); // basic get size
+    const totalPlayers = snap.size;
+    el.textContent = totalPlayers > 0 ? "👥 " + totalPlayers + (totalPlayers === 1 ? " neighbour has" : " neighbours have") + " joined so far" : "Be the first to play! 🌱";
+  } catch (e) {}
+}
+
+
+/* ---------- Admin Dashboard Logic ---------- */
+async function loadAdminDashboard() {
+  show("admin");
+  const tBody = $("#adminTableBody");
+  tBody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Loading records...</td></tr>';
+  
+  try {
+    const snap = await db.collection("players").orderBy("bestScore", "desc").get();
+    if(snap.empty){
+      tBody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No players have played yet.</td></tr>';
+      return;
+    }
+    
+    let html = "";
+    snap.forEach(doc => {
+       const d = doc.data();
+       html += `<tr>
+                  <td><b>${d.name}</b></td>
+                  <td>${d.house}</td>
+                  <td>${d.bestScore} / ${ROUNDS}</td>
+                  <td>${d.attempts}</td>
+                  <td style="text-align:center;">
+                    <button class="del-btn" data-id="${doc.id}" title="Delete player" style="background:none; border:none; font-size:20px; cursor:pointer; padding:4px;">🗑️</button>
+                  </td>
+                </tr>`;
+    });
+    tBody.innerHTML = html;
+  } catch (e) {
+    tBody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: red;">Failed to load records. Check Firebase Config.</td></tr>';
+  }
+}
+
+// Event delegation for Admin table delete buttons
+$("#adminTableBody").addEventListener("click", async (e) => {
+  const btn = e.target.closest(".del-btn");
+  if (!btn) return; // If clicked outside a button, ignore
+  
+  const docId = btn.getAttribute("data-id");
+  if (confirm("Are you sure you want to permanently delete this player's record?")) {
+    btn.style.opacity = "0.5";
+    try {
+      await db.collection("players").doc(docId).delete();
+      loadAdminDashboard(); // Refresh the table automatically
+    } catch (err) {
+      alert("Error deleting record.");
+      btn.style.opacity = "1";
+    }
+  }
+});
+
+$("#adminBack").addEventListener("click", () => show("register"));
+
+
+/* ---------- Default Listeners ---------- */
+$("#changeBtn").addEventListener("click", showRegister);
+$("#retryBtn").addEventListener("click", sendScore);
+$("#regBack").addEventListener("click", () => show("intro"));
+
+/* ---------- wiring ---------- */
+function refreshBest() {
+  const b = getBest();
+  $("#bestLine").textContent = isNaN(b) ? "" : "Your best score: " + b + " / " + ROUNDS;
+}
+function toggleModal(on) { $("#modal").classList.toggle("show", on); }
+
+$("#playBtn").addEventListener("click", showRegister);
+$("#againBtn").addEventListener("click", startGame);
+$("#nextBtn").addEventListener("click", nextRound);
+$("#helpBtn").addEventListener("click", () => toggleModal(true));
+$("#closeModal").addEventListener("click", () => toggleModal(false));
+$("#modal").addEventListener("click", (e) => { if (e.target.id === "modal") toggleModal(false); });
+$("#muteBtn").addEventListener("click", () => {
+  muted = !muted;
+  $("#muteBtn").textContent = muted ? "🔇" : "🔊";
+});
+$("#shareBtn").addEventListener("click", async () => {
+  const text = "I scored " + score + "/" + ROUNDS + " on Sort It Right — Ward 11Aa, Model of Responsible Living 💚♻️ Can you beat me? \nPlay here - http://ward11a-sort-it-right.onrender.com/";
+  try {
+    if (navigator.share) { await navigator.share({ text: text }); return; }
+    await navigator.clipboard.writeText(text);
+    $("#shareBtn").textContent = "✅ Copied!";
+    setTimeout(() => { $("#shareBtn").textContent = "📤 Share score"; }, 1800);
+  } catch (e) {}
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { toggleModal(false); }
+  if (!screens.game.classList.contains("active") || locked) return;
+  const n = parseInt(e.key, 10);
+  if (n >= 1 && n <= ORDER.length) answer(ORDER[n - 1]);
+});
+
+// INITIALIZATION
+renderLegend($("#introLegend"));
+renderLegend($("#modalLegend"));
+buildBins();
+refreshBest();
+player = loadPlayer();
+refreshStats();
+show("intro"); // Ensures the permanent leaderboard loads correctly on first boot
+</script>
+</body>
+</html>

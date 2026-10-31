@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ payload.label }}{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{% static 'css/games.css' %}">
+{% endblock %}
+{% block content %}
+<div class="gm{% if payload.game == 'chess' or payload.game == 'ludo' or payload.game == 'teen_patti' %} wide{% endif %}{% if payload.game == 'teen_patti' %} tp-game{% endif %}" id="gm">
+  <section style="min-width:0">
+    <div class="gm-head">
+      <a href="{% url 'games' %}" class="gm-icon text-decoration-none" aria-label="Back to games"><i class="bi bi-arrow-left"></i></a>
+      <h1>{{ payload.label }}{% if payload.time_control %} <small class="text-muted fw-semibold">· {{ payload.time_control }}</small>{% endif %}</h1>
+      <span class="sp"></span>
+      <span id="gm-status" class="gm-status"></span>
+      <button id="gm-sound" class="gm-icon" type="button" aria-label="Sound"></button>
+    </div>
+    <div class="gm-main">
+      <div id="gm-top" class="gm-players"></div>
+      <div id="gm-stage" class="gm-stage"></div>
+      <div id="gm-bottom" class="gm-players"></div>
+      <div id="gm-actions" class="gm-actions"></div>
+      <p id="gm-help" class="gm-help"></p>
+    </div>
+  </section>
+  <aside class="gm-side">
+    {% if payload.game == 'chess' %}
+    <div class="gm-panel"><h2>Moves</h2><div id="ch-moves" class="moves"></div></div>
+    {% endif %}
+    <div class="gm-panel gm-chat" id="gm-chat" role="dialog" aria-label="Chat">
+      <div class="gm-chat-head"><h2>Chat</h2><button type="button" id="gm-chat-close" class="gm-chat-close" aria-label="Close chat"><i class="bi bi-x-lg"></i></button></div>
+      <div id="gm-chat-log" class="gm-chat-log"></div>
+      <form id="gm-chat-form" class="d-flex gap-1 pt-2" autocomplete="off">
+        <input id="gm-chat-input" class="form-control form-control-sm" maxlength="500" placeholder="Say something…">
+        <button class="btn btn-wb btn-sm" aria-label="Send"><i class="bi bi-send-fill"></i></button>
+      </form>
+      <div class="gm-react"><button type="button">👏</button><button type="button">😮</button><button type="button">😂</button><button type="button">🔥</button><button type="button">🤝</button></div>
+    </div>
+  </aside>
+</div>
+<div class="gm-chat-backdrop" id="gm-chat-backdrop" hidden></div>
+<button type="button" id="gm-chat-fab" class="gm-chat-fab" aria-controls="gm-chat" aria-expanded="false"><i class="bi bi-chat-dots-fill"></i><span>Chat</span><b id="gm-chat-badge" hidden>0</b></button>
+<button type="button" id="gm-chat-peek" class="gm-chat-peek" hidden aria-live="polite"></button>
+
+<div id="gm-result" class="gm-result"><div class="box">
+  <div class="big" id="gm-result-big"></div><h2 id="gm-result-title"></h2><div class="why" id="gm-result-why"></div>
+  <div class="row">
+    <form method="post" action="{% url 'game_rematch' session.pk %}">{% csrf_token %}<button class="btn btn-wb"><i class="bi bi-arrow-repeat me-1"></i>{% if payload.game == 'teen_patti' %}New table{% else %}Play again{% endif %}</button></form>
+    <button id="gm-result-close" type="button" class="btn btn-outline-secondary">View board</button>
+  </div>
+</div></div>
+<div id="gm-toast" class="gm-toast"></div>
+{{ payload|json_script:"game-data" }}
+{% endblock %}
+{% block scripts %}
+<script src="{% static 'js/games.js' %}"></script>
+<script src="{% static 'js/games-simple.js' %}"></script>
+{% if payload.game == 'snakes_ladders' %}<script src="{% static 'js/games-snakes.js' %}"></script>{% endif %}
+{% if payload.game == 'ludo' %}<script src="{% static 'js/games-ludo.js' %}"></script>{% endif %}
+{% if payload.game == 'chess' %}<script src="{% static 'js/games-chess.js' %}"></script>{% endif %}
+{% if payload.game == 'teen_patti' %}<script src="{% static 'js/games-teenpatti.js' %}"></script>{% endif %}
+<script>
+WBGame.boot({
+  payload: JSON.parse(document.getElementById('game-data').textContent),
+  csrf: '{{ csrf_token }}', sessionId: {{ session.pk }},
+  urls: { move: '{% url "game_move" session.pk %}', state: '{% url "game_state" session.pk %}', chat: '{% url "game_chat" session.pk %}',
+          rematch: '{% url "game_rematch" session.pk %}', games: '{% url "games" %}' }
+});
+</script>
+<script>
+/* Phones: chat is a bottom sheet opened from the Chat button, so nobody has to scroll to reach it. */
+(function () {
+  var panel = document.getElementById('gm-chat'), fab = document.getElementById('gm-chat-fab'), back = document.getElementById('gm-chat-backdrop'),
+      badge = document.getElementById('gm-chat-badge'), log = document.getElementById('gm-chat-log'), unread = 0, ready = false, isOpen = false, peek = document.getElementById('gm-chat-peek'), peekTimer = null;
+  function set(open) {
+    isOpen = open; panel.classList.toggle('open', open); back.hidden = !open; fab.setAttribute('aria-expanded', open ? 'true' : 'false');
+    document.documentElement.classList.toggle('gm-chat-open', open);
+    peek.hidden = true; if (open) { unread = 0; badge.hidden = true; log.scrollTop = log.scrollHeight; } else { document.documentElement.style.removeProperty('--gm-kb'); fab.focus({ preventScroll: true }); }
+  }
+  fab.addEventListener('click', function () { set(true); });
+  peek.addEventListener('click', function () { set(true); });
+  document.getElementById('gm-chat-close').addEventListener('click', function () { set(false); });
+  back.addEventListener('click', function () { set(false); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && isOpen) set(false); });
+  setTimeout(function () { ready = true; }, 2500); /* messages already there when the page opens are not "new" */
+  new MutationObserver(function (list) {
+    list.forEach(function (m) { m.addedNodes.forEach(function (n) {
+      if (!ready || isOpen || !window.matchMedia('(max-width: 991.98px)').matches || !n.classList || n.classList.contains('mine')) return;
+      unread += 1; badge.textContent = unread > 9 ? '9+' : unread; badge.hidden = false;
+      var who = n.querySelector('small'), what = n.querySelector('span');
+      peek.textContent = ''; var b = document.createElement('b'); b.textContent = who ? who.textContent : 'New message'; peek.appendChild(b);
+      peek.appendChild(document.createTextNode(what ? what.textContent : '')); peek.hidden = false;
+      fab.classList.remove('ping'); void fab.offsetWidth; fab.classList.add('ping');
+      clearTimeout(peekTimer); peekTimer = setTimeout(function () { peek.hidden = true; }, 5000);
+    }); });
+  }).observe(log, { childList: true });
+  /* keep the sheet above the on-screen keyboard */
+  if (window.visualViewport) {
+    var vv = window.visualViewport;
+    function lift() { if (!isOpen) return; var kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop); document.documentElement.style.setProperty('--gm-kb', kb + 'px'); }
+    vv.addEventListener('resize', lift); vv.addEventListener('scroll', lift);
+  }
+})();
+</script>
+{% endblock %}

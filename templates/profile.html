@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}My profile{% endblock %}
+
+{% block content %}
+<div class="card-wb p-4">
+  <div class="text-center mb-4">
+    <div class="av-lg mb-2">{{ user.avatar_html }}</div>
+    <h1 class="h4 fw-bold mb-1">{{ user.display_name }}</h1>
+    <span class="house-chip">House {{ user.house }}</span>
+    {% if user.profile.age %}<span class="info-chip">{{ user.profile.age }} years</span>{% endif %}
+    {% if user.profile.gender %}<span class="info-chip">{{ user.profile.get_gender_display }}</span>{% endif %}
+    {% if user.profile.pronouns %}<div class="small text-muted mt-2">{{ user.profile.pronouns }}</div>{% endif %}
+    <div class="small text-muted mt-2">{{ my_posts }} post{{ my_posts|pluralize }} in the Town Square</div>
+  </div>
+
+  {% if user.profile.occupation or user.profile.hometown or user.profile.interests %}
+  <div class="border-top border-bottom py-3 mb-4">
+    {% if user.profile.occupation %}<div class="small mb-2"><i class="bi bi-briefcase me-2 text-muted"></i>{{ user.profile.occupation }}</div>{% endif %}
+    {% if user.profile.hometown %}<div class="small mb-2"><i class="bi bi-geo-alt me-2 text-muted"></i>From {{ user.profile.hometown }}</div>{% endif %}
+    {% if user.profile.interests %}<div class="small"><i class="bi bi-stars me-2 text-muted"></i>{{ user.profile.interests }}</div>{% endif %}
+  </div>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" novalidate>
+    {% csrf_token %}
+    {% for field in form %}
+      <div class="mb-3">
+        <label class="form-label fw-semibold small" for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% for e in field.errors %}<div class="text-danger small mt-1">{{ e }}</div>{% endfor %}
+      </div>
+    {% endfor %}
+    <p class="small text-muted">Only share details you are comfortable showing to your neighbours. Your house number and mobile number can only be changed by the committee.</p>
+    <button class="btn btn-wb w-100 py-2" type="submit">Save profile</button>
+  </form>
+</div>
+
+<form method="post" action="{% url 'logout' %}" class="text-center mt-3">
+  {% csrf_token %}
+  <button class="btn btn-link text-muted"><i class="bi bi-box-arrow-right me-1"></i>Log out</button>
+</form>
+{% endblock %}

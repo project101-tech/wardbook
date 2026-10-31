@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Notices{% endblock %}
+{% block head %}<style>
+  .poke-banner { background: #fff7e0; border: 1px solid #f5d98b; border-radius: 12px; padding: .5rem .75rem; font-weight: 600; font-size: .9rem; margin-top: .75rem; }
+  .poke-box summary { cursor: pointer; font-weight: 600; color: var(--wb-accent); list-style: none; }
+  .poke-box summary::-webkit-details-marker { display: none; }
+  .poke-list { max-height: 260px; overflow: auto; margin-top: .5rem; }
+  .poke-row { display: flex; align-items: center; gap: .6rem; padding: .35rem .2rem; border-bottom: 1px solid #eef0f4; }
+  .poke-row .nm { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .poke-row .hs { font-weight: 400; color: var(--wb-muted); font-size: .8rem; margin-left: .35rem; }
+</style>{% endblock %}
+
+{% block content %}
+<h1 class="page-title h3 mb-1">Notices</h1>
+<p class="text-muted">Official updates, events and rules from the committee.</p>
+
+{% for n in notices %}
+  <article id="notice-{{ n.id }}" class="card-wb ntc ntc-{{ n.category }} p-3 p-md-4 mb-3">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <span class="ntc-tag">{{ n.get_category_display }}</span>
+      {% if n.is_pinned %}<span class="small text-muted"><i class="bi bi-pin-angle-fill"></i> Pinned</span>{% endif %}
+      <small class="text-muted ms-auto">{{ n.created_at|date:"j M Y" }}</small>
+    </div>
+    {% if n.category == 'event' %}
+      <div class="d-flex gap-3 align-items-center mb-2">
+        <div class="leaf" aria-hidden="true"><span>{{ n.event_date|date:"M"|upper }}</span><b>{{ n.event_date|date:"j" }}</b></div>
+        <div class="min-w-0">
+          <h2 class="h5 fw-bold mb-1">{{ n.title }}</h2>
+          <div class="d-flex flex-wrap gap-x-3 small fw-semibold text-muted" style="column-gap:1rem">
+            <span><i class="bi bi-clock me-1"></i>{{ n.event_date|date:"D, g:i A" }}</span>
+            {% if n.venue %}<span><i class="bi bi-geo-alt-fill me-1"></i>{{ n.venue }}</span>{% endif %}
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <h2 class="h5 fw-bold">{{ n.title }}</h2>
+    {% endif %}
+
+    <div style="overflow-wrap:anywhere">{{ n.body|urlize|linebreaks }}</div>
+
+    {% for pr in n.payment_requests.all %}
+      <a class="btn btn-soft w-100 text-start mt-2" href="{% url 'payments' %}#pay-{{ pr.id }}">
+        <i class="bi bi-wallet2 me-1"></i>{{ pr.title }}{% if pr.amount %} · ₹{{ pr.amount|floatformat:"-2" }}{% endif %}
+        <span class="float-end">Pay <i class="bi bi-chevron-right"></i></span>
+      </a>
+    {% endfor %}
+
+    {% if n.category == 'event' %}
+      {% if n.pokers %}
+        <div class="poke-banner">👉 {{ n.pokers|join:", " }} poked you: are you coming?</div>
+      {% endif %}
+      {% if n.is_upcoming %}
+        <form method="post" action="{% url 'respond' n.id %}" class="d-flex gap-2 mt-3">
+          {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <button name="answer" value="going" class="btn btn-soft flex-fill {% if n.my == 'going' %}on{% endif %}">
+            <i class="bi bi-check-circle{% if n.my == 'going' %}-fill{% endif %} me-1"></i>{% if n.my == 'going' %}You're going{% else %}I'll come{% endif %}
+          </button>
+          <button name="answer" value="not_going" class="btn btn-soft flex-fill {% if n.my == 'not_going' %}on-no{% endif %}">
+            <i class="bi bi-x-circle{% if n.my == 'not_going' %}-fill{% endif %} me-1"></i>{% if n.my == 'not_going' %}You can't make it{% else %}Can't make it{% endif %}
+          </button>
+        </form>
+        {% if n.my %}<div class="small text-muted mt-1">Changed your mind? Tap your answer again to undo it, or tap the other button to switch.</div>{% endif %}
+      {% else %}
+        <div class="small text-muted mt-3"><i class="bi bi-clock-history me-1"></i>This event has already started, so RSVPs are closed.</div>
+      {% endif %}
+      {% if n.can_poke %}
+        <details class="poke-box mt-3" data-poke="{{ n.id }}">
+          <summary><i class="bi bi-hand-index-thumb me-1"></i>Poke a neighbour who hasn't replied</summary>
+          <input type="search" class="form-control form-control-sm mt-2" placeholder="Search by name or house…" autocomplete="off">
+          <div class="poke-list"></div>
+        </details>
+      {% endif %}
+      <div class="small text-muted mt-2">{{ n.n_going }} going · {{ n.n_no }} can't make it</div>
+      {% if n.going_list %}
+        <details class="small mt-1">
+          <summary class="text-muted" role="button">Who's coming</summary>
+          <div class="mt-2 d-flex flex-wrap gap-1">
+            {% for r in n.going_list %}<span class="info-chip">{{ r.user.display_name }}{% if r.user.house %} · {{ r.user.house }}{% endif %}</span>{% endfor %}
+          </div>
+        </details>
+      {% endif %}
+
+    {% elif n.category == 'rule' %}
+      <form method="post" action="{% url 'respond' n.id %}" class="d-flex align-items-center gap-3 mt-3">
+        {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button name="answer" value="ack" class="btn btn-soft {% if n.my == 'ack' %}on{% endif %}">
+          <i class="bi bi-hand-thumbs-up{% if n.my == 'ack' %}-fill{% endif %} me-1"></i>{% if n.my == 'ack' %}Acknowledged{% else %}I've read this{% endif %}
+        </button>
+        <span class="small text-muted">{{ n.n_ack }} resident{{ n.n_ack|pluralize }} acknowledged{% if n.my == 'ack' %} · tap again to undo{% endif %}</span>
+      </form>
+    {% endif %}
+  </article>
+{% empty %}
+  <div class="card-wb p-5 text-center text-muted">
+    <i class="bi bi-megaphone fs-1 d-block mb-2"></i>No notices yet.
+  </div>
+{% endfor %}
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var csrf = '{{ csrf_token }}';
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
+  document.querySelectorAll('details[data-poke]').forEach(function (box) {
+    var id = box.dataset.poke, input = box.querySelector('input'), list = box.querySelector('.poke-list'), timer = null, seq = 0;
+    function say(text) { list.replaceChildren(el('div', 'text-muted small py-2', text)); }
+    function load() {
+      var my = ++seq;
+      fetch('/notices/' + id + '/poke/people/?q=' + encodeURIComponent(input.value.trim()), { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (my !== seq) return;
+          if (j.error) return say(j.error);
+          if (!j.people.length) return say(input.value.trim() ? 'No one matches.' : 'Everyone has replied. Nice!');
+          list.replaceChildren();
+          j.people.forEach(function (p) {
+            var row = el('div', 'poke-row'), name = el('div', 'nm', p.name);
+            if (p.house) name.appendChild(el('span', 'hs', 'House ' + p.house));
+            var b = el('button', 'btn btn-soft btn-sm', p.poked ? 'Poked \u2713' : 'Poke'); b.type = 'button'; b.disabled = p.poked;
+            b.onclick = function () {
+              b.disabled = true;
+              var fd = new FormData(); fd.append('target', p.id);
+              fetch('/notices/' + id + '/poke/', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRFToken': csrf }, body: fd })
+                .then(function (r) { return r.json(); })
+                .then(function (j) { b.textContent = j.ok ? 'Poked \u2713' : 'Poke'; if (!j.ok) { b.disabled = false; } b.title = j.error || j.message || ''; if (j.error) alert(j.error); })
+                .catch(function () { b.disabled = false; });
+            };
+            row.appendChild(name); row.appendChild(b); list.appendChild(row);
+          });
+        }).catch(function () { say('Could not load. Try again.'); });
+    }
+    box.addEventListener('toggle', function () { if (box.open) { say('Loading\u2026'); load(); } });
+    input.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(load, 200); });
+  });
+})();
+</script>
+{% endblock %}

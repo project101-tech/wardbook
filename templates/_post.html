@@ -1,0 +1,48 @@
+{# One Town Square post. Used by feed.html and by the live endpoint, so new posts look identical to loaded ones. #}
+<article class="card-wb p-3 mb-3" id="post-{{ post.id }}" data-post="{{ post.id }}" data-state="{{ post.comments.all|length }}:{{ post.like_count }}:{% if post.liked %}1{% else %}0{% endif %}">
+    <div class="d-flex gap-2 align-items-center mb-2">
+      <a href="{% url 'public_profile' post.author.pk %}?next={{ next_url|urlencode }}" class="text-decoration-none">{{ post.author.avatar_html }}</a>
+      <div class="lh-sm min-w-0">
+        <div class="fw-bold"><a href="{% url 'public_profile' post.author.pk %}?next={{ next_url|urlencode }}" class="text-decoration-none text-reset">{{ post.author.display_name }}</a> {% if post.author.house %}<span class="house-chip">House {{ post.author.house }}</span>{% endif %}</div>
+        <small class="text-muted">{{ post.created_at|timesince }} ago</small>
+      </div>
+      {% if post.author_id == user.id or user.is_staff %}
+        <form method="post" action="{% url 'delete_post' post.id %}" class="ms-auto" onsubmit="return confirm('Delete this post?')">
+          {% csrf_token %}<input type="hidden" name="next" value="{{ next_url }}">
+          <button class="icon-btn" title="Delete"><i class="bi bi-trash3"></i></button>
+        </form>
+      {% endif %}
+    </div>
+
+    <div class="post-body" data-mentionable>{{ post.body|urlize|linebreaksbr }}</div>
+    {% if post.image %}<img class="post-img" src="{{ post.image.url }}" alt="" loading="lazy">{% endif %}
+
+    <div class="d-flex align-items-center gap-1 mt-3 pt-2 border-top js-live-likes">
+      <form method="post" action="{% url 'like' post.id %}" class="js-ajax">
+        {% csrf_token %}<input type="hidden" name="next" value="{{ next_url }}">
+        <button class="icon-btn {% if post.liked %}liked{% endif %}">
+          <i class="bi bi-heart{% if post.liked %}-fill{% endif %} me-1"></i>{{ post.like_count }}
+        </button>
+      </form>
+      <span class="icon-btn" style="pointer-events:none"><i class="bi bi-chat me-1"></i>{{ post.comments.all|length }}</span>
+    </div>
+
+    <div class="js-live-comments">
+    {% for c in post.comments.all %}
+      <div class="d-flex gap-2 mt-2">
+        <a href="{% url 'public_profile' c.author.pk %}?next={{ next_url|urlencode }}" class="av-sm">{{ c.author.avatar_html }}</a>
+        <div class="comment flex-grow-1">
+          <a href="{% url 'public_profile' c.author.pk %}?next={{ next_url|urlencode }}" class="fw-bold small text-reset text-decoration-none">{{ c.author.display_name }}</a>
+          {% if c.author.house %}<span class="house-chip">{{ c.author.house }}</span>{% endif %}
+          <div class="small" style="overflow-wrap:anywhere" data-mentionable>{{ c.body }}</div>
+        </div>
+      </div>
+    {% endfor %}
+    </div>
+
+    <form method="post" action="{% url 'comment' post.id %}" class="d-flex gap-2 mt-3 js-ajax">
+      {% csrf_token %}<input type="hidden" name="next" value="{{ next_url }}">
+      <input class="form-control form-control-sm" name="body" maxlength="500" data-mention="all" placeholder="Write a comment…" required autocomplete="off">
+      <button class="btn btn-soft btn-sm px-3" aria-label="Send comment"><i class="bi bi-send-fill"></i></button>
+    </form>
+</article>

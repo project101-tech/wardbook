@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Town Square{% endblock %}
+
+{% block content %}
+<section class="greet" aria-label="Welcome">
+  <h1><span id="greet-word">Hello</span>, {{ user.first_name|default:user.username }}</h1>
+  <p>See what your neighbours are up to.</p>
+</section>
+<script>
+  (function () { var h = new Date().getHours(), w = h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : h < 21 ? 'Good evening' : 'Good night'; document.getElementById('greet-word').textContent = w; })();
+</script>
+{% if latest_notice %}
+  <a href="{% url 'announcements' %}" class="card-wb d-flex gap-3 align-items-center p-3 mb-3 text-decoration-none"
+     style="border-left: 5px solid var(--wb-accent); color: inherit;">
+    <i class="bi bi-megaphone-fill fs-4" style="color: var(--wb-accent)"></i>
+    <div class="flex-grow-1 min-w-0">
+      <div class="small text-muted fw-semibold">
+        {% if latest_notice.is_pinned %}Pinned · {% endif %}{{ latest_notice.get_category_display }}
+      </div>
+      <div class="fw-bold text-truncate">{{ latest_notice.title }}</div>
+    </div>
+    <i class="bi bi-chevron-right text-muted"></i>
+  </a>
+{% endif %}
+
+<!-- composer -->
+<form method="post" enctype="multipart/form-data" class="card-wb p-3 mb-3">
+  {% csrf_token %}
+  <div class="d-flex gap-2">
+    {{ user.avatar_html }}
+    <div class="flex-grow-1">
+      {{ form.body }}
+      {% for e in form.body.errors %}<div class="text-danger small mt-1">{{ e }}</div>{% endfor %}
+      {% for e in form.image.errors %}<div class="text-danger small mt-1">{{ e }}</div>{% endfor %}
+    </div>
+  </div>
+  <div class="d-flex justify-content-between align-items-center mt-2">
+    <label for="post-image" class="icon-btn mb-0" role="button"><i class="bi bi-image me-1"></i><span id="file-name">Photo</span></label>
+    {{ form.image }}
+    <button type="submit" class="btn btn-wb btn-sm px-4">Post</button>
+  </div>
+</form>
+
+<!-- posts -->
+<button type="button" id="new-posts-pill" class="btn btn-wb btn-sm shadow d-none" style="position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:25"><i class="bi bi-arrow-up me-1"></i><span></span></button>
+<div id="posts">
+{% for post in page %}
+  {% include "_post.html" %}
+{% empty %}
+  <div class="card-wb p-5 text-center text-muted" id="posts-empty">
+    <i class="bi bi-chat-heart fs-1 d-block mb-2"></i>
+    <div class="fw-semibold">Nothing here yet.</div>
+    Be the first to say hello to your neighbours.
+  </div>
+{% endfor %}
+</div>
+
+{% if page.has_previous or page.has_next %}
+  <div class="d-flex justify-content-between mb-3">
+    {% if page.has_previous %}<a class="btn btn-soft btn-sm" href="?page={{ page.previous_page_number }}"><i class="bi bi-arrow-left"></i> Newer</a>{% else %}<span></span>{% endif %}
+    {% if page.has_next %}<a class="btn btn-soft btn-sm" href="?page={{ page.next_page_number }}">Older <i class="bi bi-arrow-right"></i></a>{% endif %}
+  </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var f = document.getElementById('post-image');
+  f.addEventListener('change', function () {
+    document.getElementById('file-name').textContent = f.files.length ? f.files[0].name.slice(0, 24) : 'Photo';
+  });
+</script>
+<script>
+/* Live Town Square: new posts, comments, likes and removals appear without a refresh. */
+(function () {
+  var posts = document.getElementById('posts'), pill = document.getElementById('new-posts-pill');
+  var firstPage = !/[?&]page=(?!1(&|$))\d+/.test(location.search);
+  var pending = [], busy = false, again = false;
+
+  function articles() { return posts.querySelectorAll('[data-post]'); }
+  function maxId() {
+    var m = 0;
+    Array.prototype.forEach.call(articles(), function (a) { m = Math.max(m, parseInt(a.dataset.post, 10)); });
+    pending.forEach(function (p) { m = Math.max(m, p.id); });
+    return m;
+  }
+  function parse(html) { var t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; }   // server-rendered, escaped by Django
+
+  function showNow(items) {
+    var empty = document.getElementById('posts-empty'); if (empty) empty.remove();
+    items.forEach(function (p) { if (!posts.querySelector('[data-post="' + p.id + '"]')) posts.insertBefore(parse(p.html), posts.firstChild); });
+  }
+  function flush() { var items = pending; pending = []; pill.classList.add('d-none'); showNow(items); }
+  function addNew(items) {
+    items.forEach(function (p) { if (!pending.some(function (q) { return q.id === p.id; })) pending.push(p); });
+    if (window.scrollY < 150) { flush(); return; }                  // at the top: just show them
+    pill.querySelector('span').textContent = pending.length + (pending.length === 1 ? ' new post' : ' new posts');
+    pill.classList.remove('d-none');                                // reading further down: don't shove the page, offer a tap
+  }
+  pill.addEventListener('click', function () { flush(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+  window.addEventListener('scroll', function () { if (pending.length && window.scrollY < 150) flush(); }, { passive: true });
+
+  function apply(j) {
+    (j.gone || []).forEach(function (id) { var a = posts.querySelector('[data-post="' + id + '"]'); if (a) a.remove(); });
+    (j.upd || []).forEach(function (u) {
+      var a = posts.querySelector('[data-post="' + u.id + '"]'), fresh = parse(u.html); if (!a || !fresh) return;
+      ['.js-live-likes', '.js-live-comments'].forEach(function (sel) { a.querySelector(sel).innerHTML = fresh.querySelector(sel).innerHTML; });   // the comment box is left alone
+      a.dataset.state = fresh.dataset.state;
+    });
+    if ((j.new || []).length) addNew(j.new);
+  }
+  function refresh() {
+    if (busy) { again = true; return; }
+    busy = true;
+    var st = Array.prototype.map.call(articles(), function (a) { return a.dataset.post + ':' + a.dataset.state; }).slice(0, 40).join(',');
+    var q = 'st=' + encodeURIComponent(st) + '&next=' + encodeURIComponent(location.pathname + location.search);
+    if (firstPage) q += '&after=' + maxId();
+    fetch('{% url "feed_live" %}?' + q, { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { if (j) apply(j); })
+      .catch(function () {})
+      .then(function () { busy = false; if (again) { again = false; refresh(); } });
+  }
+  wbLive.on('f', refresh);
+  setInterval(function () { if (!document.hidden) refresh(); }, 60000);   // safety net
+
+  // like and comment without leaving the page
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form.classList || !form.classList.contains('js-ajax')) return;
+    e.preventDefault();
+    var btn = form.querySelector('button'); if (btn) btn.disabled = true;
+    fetch(form.action, { method: 'POST', body: new FormData(form), credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } })
+      .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+      .then(function () { var box = form.querySelector('input[name=body]'); if (box) box.value = ''; refresh(); })
+      .catch(function () { form.submit(); })   // anything odd: fall back to the normal page reload
+      .then(function () { if (btn) btn.disabled = false; });
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,35 @@
+{% if page.object_list %}
+  <div class="mp-grid">
+    {% for r in page.object_list %}
+      <a class="card-wb mp-person" href="{% url 'music_profile' r.pk %}?next={{ back_to|urlencode }}" aria-label="{{ r.display_name }}'s music, {{ r.shared_count }} playlist{{ r.shared_count|pluralize }}">
+        <div class="mp-covers">
+          {% for c in r.covers %}<img src="{{ c }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% empty %}<span><i class="bi bi-music-note-beamed"></i></span>{% endfor %}
+        </div>
+        <div class="body">
+          <span class="av-sm">{{ r.avatar_html }}</span>
+          <div class="flex-grow-1" style="min-width:0">
+            <div class="nm">{{ r.display_name }} {% if r.profile.is_online %}<span class="online-dot" title="Online"></span>{% endif %}</div>
+            <div class="mp-count"><span class="house-chip">House {{ r.house }}</span> · {{ r.shared_count }} playlist{{ r.shared_count|pluralize }}</div>
+          </div>
+          <span class="btn btn-soft btn-sm">Listen</span>
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+  {% if page.paginator.num_pages > 1 %}
+    <nav class="d-flex justify-content-between align-items-center mt-3" aria-label="Pages">
+      {% if page.has_previous %}<a class="btn btn-soft btn-sm" href="?q={{ q|urlencode }}&page={{ page.previous_page_number }}"><i class="bi bi-arrow-left"></i> Previous</a>{% else %}<span></span>{% endif %}
+      <span class="small text-muted">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+      {% if page.has_next %}<a class="btn btn-soft btn-sm" href="?q={{ q|urlencode }}&page={{ page.next_page_number }}">Next <i class="bi bi-arrow-right"></i></a>{% else %}<span></span>{% endif %}
+    </nav>
+  {% endif %}
+{% elif q %}
+  <div class="card-wb p-5 text-center text-muted"><i class="bi bi-search fs-1 d-block mb-2"></i>No neighbour matching “{{ q }}” has shared music yet.</div>
+{% else %}
+  <div class="card-wb p-5 text-center text-muted">
+    <i class="bi bi-music-note-list fs-1 d-block mb-2"></i>
+    <div class="fw-bold text-body mb-1">Nobody has shared music yet</div>
+    <p class="mb-3">Be the first: add a Spotify playlist and switch sharing on.</p>
+    <a class="btn btn-wb" href="{% url 'music_manage' %}">Share my music</a>
+  </div>
+{% endif %}
