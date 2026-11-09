@@ -387,6 +387,7 @@ class GameChallenge(models.Model):
         LUDO = "ludo", "Ludo"
         CHESS = "chess", "Chess"
         TEEN_PATTI = "teen_patti", "Teen Patti"
+        BLACKJACK = "blackjack", "Blackjack"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"

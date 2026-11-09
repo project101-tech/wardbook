@@ -17,6 +17,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from . import blackjack_engine as bje
 from . import chess_engine as chess
 from . import gamelogic as logic
 from . import teenpatti_engine as tpe
@@ -31,6 +32,8 @@ Game = GameChallenge.Game
 GAME_CARDS = [
     {"key": Game.TEEN_PATTI, "label": "Teen Patti", "blurb": "Flash with play money: blind or seen, side shows, a big pot. Up to 9 at one table.",
      "who": "2 to 9 players", "party": True, "max": 8, "glyph": "♠", "theme": "tp"},
+    {"key": Game.BLACKJACK, "label": "Blackjack", "blurb": "Beat the dealer to 21. Everyone takes a turn as dealer, five rounds each. Hit, stand, double, split.",
+     "who": "2 to 7 players", "party": True, "max": 6, "glyph": "21", "theme": "bj"},
     {"key": Game.CHESS, "label": "Chess", "blurb": "The full game with clocks, castling, en passant and draw offers.",
      "who": "2 players", "party": False, "max": 1, "glyph": "♞", "theme": "chess"},
     {"key": Game.LUDO, "label": "Ludo", "blurb": "Roll a six to start. Race four tokens home and send rivals back to the yard.",
@@ -44,6 +47,7 @@ GAME_CARDS = [
 ]
 CARD_BY_KEY = {c["key"]: c for c in GAME_CARDS}
 CHESS_CLOCKS = {"3": "3 min", "5": "5 min", "10": "10 min", "15": "15 min", "30": "30 min"}
+BJ_GAMES = (1, 2, 3, 4, 5, 10)      # how many games a Blackjack table plays (one game = every player has dealt 5 rounds)
 TP_BOOTS = {"10": "₹10 boot", "20": "₹20 boot", "50": "₹50 boot"}      # rupees of pretend money; 10 rupees = 1 token
 CHESS_REASONS = {
     "checkmate": "Checkmate", "stalemate": "Stalemate", "insufficient": "Not enough pieces to checkmate",
@@ -65,6 +69,13 @@ def boot_of(challenge):
 
 class TableError(Exception):
     pass
+
+
+def bj_games_of(challenge):
+    """Blackjack: how many games to play, kept as text like "3 games" on the challenge."""
+    m = re.match(r"\s*(\d+)", challenge.time_control or "")
+    n = int(m.group(1)) if m else 1
+    return n if n in BJ_GAMES else 1
 
 
 def minutes_of(challenge):
@@ -148,6 +159,7 @@ def games(request):
         "stats": {"wins": wins, "losses": total - wins - draws, "draws": draws, "played": total},
         "leaderboard": leaderboard,
         "boots": [{"k": k, "label": v, "tokens": int(k) // 10} for k, v in TP_BOOTS.items()],
+        "bj_games": BJ_GAMES,
     })
 
 
@@ -173,6 +185,10 @@ def game_challenge(request):
         return redirect("games")
     if game == Game.TEEN_PATTI:
         clock = TP_BOOTS.get(request.POST.get("boot", ""), TP_BOOTS["10"])         # only the boot is chosen here; everybody picks their own buy-in at the table
+    elif game == Game.BLACKJACK:
+        n_games = request.POST.get("games", "")
+        n_games = int(n_games) if n_games.isdigit() and int(n_games) in BJ_GAMES else 1
+        clock = f"{n_games} game{'s' if n_games != 1 else ''}"
     else:
         clock = request.POST.get("time_control", "") if game == Game.CHESS else ""
         clock = CHESS_CLOCKS.get(clock, "")
@@ -198,6 +214,9 @@ def session_for_challenge(challenge):
         GameParticipant.objects.get_or_create(challenge=challenge, user_id=challenge.opponent_id, defaults={"seat": 1})
     if challenge.game == Game.TEEN_PATTI:
         state, first = _open_table(challenge, players)
+    elif challenge.game == Game.BLACKJACK:
+        state = bje.new_table(players, bj_games_of(challenge), now_ms())      # seats and the first dealer are picked at random
+        first = bje.info(state)["next"]
     else:
         state, first = logic.new_state(challenge.game, players, minutes_of(challenge))
     return GameSession.objects.create(challenge=challenge, state=state, current_turn_id=first)
@@ -343,8 +362,8 @@ def game_payload(session, user):
                         "avatar": _avatar(u), "symbol": state.get("symbols", {}).get(str(pid), "")})
     if ch.game == Game.CHESS:
         clean = chess.public_state(state)
-    elif ch.game == Game.TEEN_PATTI:
-        clean = {}                                   # the table's own state holds everyone's cards: never sent
+    elif ch.game in (Game.TEEN_PATTI, Game.BLACKJACK):
+        clean = {}                                   # the table's own state holds the deck and every hidden card: never sent
     else:
         clean = dict(state)
     turn_is_me = session.is_active and session.current_turn_id == user.id
@@ -363,6 +382,12 @@ def game_payload(session, user):
         pv = tpe.public_view(state, user.id, out["server_now"])
         out["tp"] = pv
         out["turn"] = pv["turn"] if pv["phase"] == "bet" else (pv["side"]["to"] if pv["phase"] == "sideshow" else None)
+    elif ch.game == Game.BLACKJACK:
+        out["bj"] = bje.public_view(state, user.id, out["server_now"])
+        nxt = bje.info(state)["next"]
+        if state["phase"] == "insurance" and state["rnd"]["ins"].get(str(user.id), True) is None:
+            nxt = user.id                            # several people answer insurance at once: it is "your turn" if you have not
+        out["turn"] = nxt if session.is_active else None
     elif ch.game == Game.LUDO:
         dice = state.get("dice")
         out["movable"] = logic.ludo_movable(state, user.id, dice) if (dice and turn_is_me) else []
@@ -428,11 +453,14 @@ def _settle_clock(session):
 
 
 def _settle_table(session):
-    """Teen Patti: a turn timer ran out (auto-pack), or the pause between hands is over. True if anything changed."""
-    if session.challenge.game != Game.TEEN_PATTI or not session.is_active:
+    """Teen Patti / Blackjack: a turn timer ran out (auto-pack, auto-stand ...), or the pause between hands is over.
+    True if anything changed."""
+    game = session.challenge.game
+    if game not in (Game.TEEN_PATTI, Game.BLACKJACK) or not session.is_active:
         return False
-    if tpe.settle(session.state, now_ms()):
-        _save(session, tpe.info(session.state))
+    engine = tpe if game == Game.TEEN_PATTI else bje
+    if engine.settle(session.state, now_ms()):
+        _save(session, engine.info(session.state))
         return True
     return False
 
@@ -469,6 +497,14 @@ def game_move(request, pk):
             if err:
                 return reply(err, 400)
             info = tpe.info(state)
+            nudge = info.get("nudge", False)
+        elif game == Game.BLACKJACK:
+            if action != "bj":
+                return reply("Unknown action.", 400)
+            err = bje.act(state, me.id, value, now_ms())
+            if err:
+                return reply(err, 400)
+            info = bje.info(state)
             nudge = info.get("nudge", False)
         elif action == "resign":
             if game not in logic.TWO_PLAYER:
@@ -513,7 +549,7 @@ def game_move(request, pk):
             return reply("Unknown action.", 400)
 
         _save(session, info)
-        if nudge and action in ("move", "roll", "tp") and not info["finished"] and info["next"] != me.id:
+        if nudge and action in ("move", "roll", "tp", "bj") and not info["finished"] and info["next"] != me.id:
             _nudge(session, info["next"], me)
         return reply()
 
@@ -522,7 +558,7 @@ def game_move(request, pk):
 def game_state(request, pk):
     session = game_access_or_404(request.user, pk)
     game = session.challenge.game
-    if session.is_active and (game == Game.TEEN_PATTI or (game == Game.CHESS and session.state.get("clock"))):
+    if session.is_active and (game in (Game.TEEN_PATTI, Game.BLACKJACK) or (game == Game.CHESS and session.state.get("clock"))):
         with transaction.atomic():
             locked = GameSession.objects.select_for_update().select_related("challenge").get(pk=pk)
             if _settle_clock(locked) or _settle_table(locked):
@@ -556,8 +592,9 @@ def game_rematch(request, pk):
         old = GameSession.objects.select_for_update().select_related("challenge").get(pk=old.pk)
         if old.is_active:
             return redirect("game_play", pk=old.pk)
-        if old.challenge.game == Game.TEEN_PATTI:
-            # a new table is an invitation everyone answers (and everybody picks a fresh buy-in), not an automatic rematch
+        if old.challenge.game in (Game.TEEN_PATTI, Game.BLACKJACK):
+            # a new table is an invitation everyone answers (Teen Patti: everybody picks a fresh buy-in; Blackjack: people may
+            # have left), not an automatic rematch
             challenge = old.challenge
             others = [uid for uid in old.state.get("players", []) if uid != request.user.id]
             if not others:
@@ -569,7 +606,7 @@ def game_rematch(request, pk):
                 GameParticipant.objects.create(challenge=fresh, user_id=uid, seat=seat, response=GameParticipant.Response.PENDING)
                 target = User.objects.filter(pk=uid).first()
                 if target:
-                    notify(target, f"{request.user.display_name} invited you to a new Teen Patti table",
+                    notify(target, f"{request.user.display_name} invited you to a new {challenge.get_game_display()} table",
                            "Open Games to take a seat.", reverse("games"), Notification.Kind.GAME, request.user)
             messages.success(request, "New table opened. It starts when everyone has answered.")
             return redirect("games")

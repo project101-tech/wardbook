@@ -8,9 +8,9 @@ import secrets
 
 from . import chess_engine as chess
 
-GAMES = ("tic_tac_toe", "connect_four", "snakes_ladders", "ludo", "chess")
+GAMES = ("tic_tac_toe", "connect_four", "snakes_ladders", "ludo", "chess", "teen_patti", "blackjack")
 TWO_PLAYER = ("tic_tac_toe", "connect_four", "chess")
-PARTY = ("snakes_ladders", "ludo", "teen_patti")          # several players (Teen Patti: up to 9)
+PARTY = ("snakes_ladders", "ludo", "teen_patti", "blackjack")          # several players (Teen Patti: up to 9, Blackjack: up to 7)
 
 
 def roll_die():

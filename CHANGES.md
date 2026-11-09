@@ -1,40 +1,25 @@
-# This update: Music Taste (Spotify playlists + embedded player)
+# Blackjack (Hangout → Games)
 
-Built on top of the current `main` (commit 2e9147b, "Removed society naming").
-Copy the files below into your repo (same paths), then run **`python manage.py migrate`** (adds migration `0016_music_taste`: two new tables, nothing existing is touched).
-**No new Python packages. No new environment variables are required. No Spotify developer account is needed.**
+**Run `python manage.py migrate`** (0019 only updates the game choices; no table changes).
+No new packages or settings.
 
-## New files
-| File | What it is |
-|------|-----------|
-| `core/music.py` | Views: discover/search, a resident's music profile, manage page, add / edit / hide / reorder / remove / refresh, link preview |
-| `core/spotify.py` | Link validation (only `open.spotify.com/playlist/<id>`), builds link + embed URL from the validated id, asks Spotify's public oEmbed for title + artwork (best effort, never blocks saving) |
-| `core/migrations/0016_music_taste.py` | `MusicProfile`, `MusicPlaylist` |
-| `core/test_music.py` | 39 automated tests (`python manage.py test core.test_music`) |
-| `templates/music.html`, `_music_results.html`, `music_profile.html`, `music_manage.html`, `_music_embed.html` | The pages |
-| `static/css/music.css`, `static/js/music.js` | Styling, live search, link preview |
+## How it works
+- Pick **Blackjack** in Games, choose **How many games?** (1, 2, 3, 4, 5 or 10), invite 1–6 people (2–7 at the table). It starts when everyone answers or the host presses Start.
+- Seats are shuffled; a random player deals first. Each player is the dealer for **5 rounds**, then the deal moves to the next seat. When everyone has dealt 5 rounds, that is **one game**.
+- The dealer presses **Deal cards**. Everyone's cards are on the table with names underneath. Players act in seat order (clockwise from the dealer's left): Hit, Stand, Double, Split.
+- Winner of a game = most points that game. Winner of the match = most games won (ties: total points; still tied = draw).
+- Points, not money: win +1, blackjack +1.5, push 0, loss −1, insurance ½ (scores are stored in half-points).
 
-## Changed files
-| File | Change |
-|------|--------|
-| `core/models.py` | Added `MusicProfile`, `MusicPlaylist` (appended at the end) |
-| `config/urls.py` | `music/...` routes |
-| `config/settings.py` | Three optional settings: `MUSIC_MAX_PLAYLISTS` (20), `SPOTIFY_OEMBED_TIMEOUT` (4 s), `SPOTIFY_EMBED_SANDBOX` |
-| `core/admin.py` | Admin pages for both models (moderation) |
-| `core/views.py` | `public_profile` passes `music_count` (3 lines) |
-| `templates/base.html` | "Music Taste" in the top bar and a "Music" tab on phones. Top-bar links are now `nowrap` with slightly tighter spacing, because the bar was already wrapping/overflowing at tablet widths and one more link made it worse |
-| `templates/public_profile.html` | "Music Taste" button when that neighbour shares music |
-| `README.md` | Short Music Taste section |
+## Rules implemented
+- 6-deck shoe, reshuffled between rounds when 25% is left. J/Q/K = 10. Ace = 1 or 11 (best total is used automatically; soft totals show as "7/17").
+- Blackjack = Ace + ten-value card as first two cards (not after a split), pays 3:2. Dealer peeks on Ace/ten upcard.
+- Insurance offered when dealer shows an Ace: half a point, pays 2:1.
+- Dealer draws to 16 and stands on every 17 (including soft 17). Dealer does not draw if every hand is bust or blackjack.
+- Double on first two cards (also after a split). Split any equal-value pair (10/J/Q/K count as equal), up to 4 hands; split aces get one card each and cannot be re-split; 21 after a split is not blackjack. No surrender.
+- Bust loses even if the dealer also busts. Equal totals push.
+- Timers: dealer 45s to deal, insurance 25s, 40s per turn (auto-stand). Three missed turns in a row removes a player; **Leave table** is always available. The match ends if fewer than two players remain.
+- The shoe and the dealer's face-down card are never sent to other players' browsers.
 
-## How privacy works
-* Nothing is visible until the resident switches **Share my music with neighbours** on (off by default). Adding a playlist never publishes by itself.
-* Each playlist also has Visible / Hidden. Hidden ones are never sent to anyone else's browser.
-* Switching sharing off hides everything again immediately.
-* Every edit is a POST that looks the playlist up by `user=request.user`; someone else's playlist is simply a 404.
-
-## Optional settings
-`SPOTIFY_EMBED_SANDBOX` is the iframe `sandbox` attribute for Spotify's player. If a browser ever blocks playback, set it to `-` in Render to switch the sandbox off (no redeploy of code needed).
-
-## Spotify limits (why there is no "Connect Spotify" button)
-Spotify's February 2026 rules cap development-mode apps at 5 users and require the developer to have Premium; extended access needs a registered business with a very large user base. Spotify also removed the endpoint that listed another person's playlists. So linking accounts cannot work for a society. Pasting a link + Spotify's official embed works for everyone, with no keys.
-Private playlists cannot be played by neighbours: the owner must make the playlist public in Spotify.
+## Files
+New: `core/blackjack_engine.py`, `core/test_blackjack.py`, `core/migrations/0019_blackjack.py`, `static/js/games-blackjack.js`
+Changed: `core/models.py`, `core/gamelogic.py`, `core/game_views.py`, `templates/games.html`, `templates/_game_active_row.html`, `templates/game_play.html`, `static/js/games.js`, `static/css/games.css`
