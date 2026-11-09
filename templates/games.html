@@ -143,7 +143,7 @@
         <div id="pick-games" class="mt-3 d-none">
           <label class="small fw-semibold mb-1" for="pick-games-n">How many games?</label>
           <select name="games" id="pick-games-n" class="form-select">{% for n in bj_games %}<option value="{{ n }}">{{ n }} game{{ n|pluralize }}</option>{% endfor %}</select>
-          <div class="small text-muted mt-1">One game = every player has been the dealer for 5 rounds. The dealer is picked at random, then the deal passes to the next seat every 5 rounds. Play is for points (a win is +1, blackjack +1.5), no money.</div>
+          <div class="small text-muted mt-1">One game = every player has been the dealer for 5 rounds. The dealer is picked at random, then the deal passes to the next seat every 5 rounds. Everyone starts each game with 1,000 play chips (no real money). You bet before every deal; the dealer is the bank. Whoever holds the most chips at the end of a game wins it.</div>
         </div>
         <div id="pick-clock" class="mt-3 d-none">
           <label class="small fw-semibold mb-1">Time on the clock (each player)</label>

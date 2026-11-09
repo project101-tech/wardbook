@@ -6,8 +6,12 @@ THE TABLE
     The host chooses how many games to play before the table opens.
   * The dealer is a person: they press "Deal cards" to start each round, and press "Draw card" when the rules
     make them take one. The dealer plays against every other player, and plays last.
-  * Play is for points, not money. Every hand is one point (a bet of 1). Scores are kept in HALF points (so a
-    blackjack, which pays 3 to 2, is +1.5) and the screen divides by two.
+  * Play is for CHIPS (play money). Every game starts with everyone holding START_CHIPS. Before each deal every
+    player (not the dealer) bets any even number of chips from MIN_BET up to the table limit, or sits the round
+    out. The dealer is the BANK for their rounds: they collect the losing bets and pay the winning ones, so chips
+    only move between players. Holdings are settled after every round, and the table limit (a share of the bank)
+    plus the "bank must cover it" check on double / split keep the bank from ever owing more than it has.
+  * Whoever holds the most chips at the end of a game wins that game. Chips start fresh in every game.
 
 THE CARDS
   * 6 decks in a shoe, reshuffled when a quarter is left (the "cut card"), checked at the start of a round.
@@ -15,13 +19,16 @@ THE CARDS
     (a hand with an Ace counted as 11 is "soft"). You choose how to play it by hitting or standing.
 
 THE ROUND
-  1. Deal: every player gets 2 cards face up, the dealer 1 face up and 1 face down (the hole card), dealt one
+  0. Bets: every player bets (or sits out); the dealer presses Deal once at least one bet is in.
+  1. Deal: every player who bet gets 2 cards face up, the dealer 1 face up and 1 face down (the hole card), dealt one
      card at a time starting left of the dealer.
-  2. If the dealer shows an Ace, every player may buy INSURANCE (half a point). It pays 2 to 1 if the dealer has
+  2. If the dealer shows an Ace, every player may buy INSURANCE (half their bet). It pays 2 to 1 if the dealer has
      blackjack. Then, when the dealer shows an Ace or a ten-value card, the dealer checks the hole card ("peek").
      A dealer blackjack ends the round on the spot: players lose their bet, except a player with blackjack, who
      pushes (gets the bet back).
   3. A player with blackjack (an Ace plus a ten-value card as the first two cards) is paid 3 to 2 and does not play.
+     Payouts: win 1 to 1, blackjack 3 to 2, insurance 2 to 1, push returns the bet, a double or a split hand pays
+     on its own (larger) bet.
   4. Everyone else plays in turn, from the seat left of the dealer round to the dealer's right:
        Hit      take a card. Over 21 is a bust and the hand loses at once. On 21 the hand stands by itself.
        Stand    keep what you have.
@@ -45,9 +52,9 @@ DECKS = 6
 CUT_AT = DECKS * 52 // 4         # reshuffle at the start of a round when fewer cards than this are left
 ROUNDS_PER_DEALER = 5
 MAX_HANDS = 4                    # a player can split up to 4 hands
-UNIT = 2                         # one point, written in half points
-INSURANCE = UNIT // 2            # insurance costs half the bet
-DEAL_MS = 45_000                 # the dealer's time to press Deal
+START_CHIPS = 1000               # what everybody holds at the start of every game
+MIN_BET = 10
+DEAL_MS = 45_000                 # betting, then the dealer's time to press Deal
 INSURANCE_MS = 25_000
 TURN_MS = 40_000                 # time to hit, stand ...
 DRAW_MS = 40_000                 # the dealer's time to draw a forced card
@@ -113,8 +120,8 @@ def is_natural(cards):
 # ---------------------------------------------------------------------------------------------
 # Hands
 # ---------------------------------------------------------------------------------------------
-def _new_hand():
-    return {"cards": [], "stake": UNIT, "done": False, "doubled": False, "split": False, "ace": False}
+def _new_hand(stake):
+    return {"cards": [], "stake": stake, "done": False, "doubled": False, "split": False, "ace": False}
 
 
 def hand_natural(h):
@@ -162,6 +169,76 @@ def game_no(state):
 
 
 # ---------------------------------------------------------------------------------------------
+# Chips. A player's chips are taken out of their stack the moment they are committed (bet, double, split,
+# insurance) and paid back, with winnings, when the round settles. "Holdings" = stack + chips in play.
+# ---------------------------------------------------------------------------------------------
+def _even_down(n):
+    n = max(0, int(n))
+    return n - n % 2
+
+
+def table_max(state):
+    """The most one player may bet this round: a fair share of the bank, so that every player could bet it, win
+    (blackjack pays 3 to 2) or double, and the bank could still pay everybody."""
+    rnd = state["rnd"]
+    return _even_down(state["chips"][str(rnd["dealer"])] // (2 * max(1, len(rnd["order"]))))
+
+
+def bet_cap(state, uid):
+    rnd, k = state["rnd"], str(uid)
+    return _even_down(min(state["chips"][k] + rnd["bets"].get(k, 0), table_max(state)))
+
+
+def _eligible(state):
+    """Players who could bet this round (they have the chips, and the bank is big enough)."""
+    rnd = state["rnd"]
+    return [u for u in rnd["order"] if u not in state["left"] and bet_cap(state, u) >= MIN_BET]
+
+
+def _undecided(state):
+    rnd = state["rnd"]
+    return [u for u in _eligible(state) if str(u) not in rnd["bets"] and u not in rnd["sit"]]
+
+
+def _exposure(state):
+    """The most the bank could have to pay out on the table right now (a blackjack pays 3 to 2; before the cards
+    are dealt every bet counts as if it might be one)."""
+    rnd = state["rnd"]
+    if rnd["hands"]:
+        return sum(h["stake"] * (3 if hand_natural(h) else 2) // 2
+                   for hs in rnd["hands"].values() for h in hs if not hand_bust(h))
+    return sum(b * 3 // 2 for b in rnd["bets"].values())
+
+
+def _free_bank(state):
+    return state["chips"][str(state["rnd"]["dealer"])] - _exposure(state)
+
+
+def in_play(state, uid):
+    """Chips of this player that are on the table (bet, doubles, splits, insurance) and not yet settled."""
+    rnd, k = state["rnd"], str(uid)
+    if not rnd or rnd.get("done"):
+        return 0
+    if rnd["hands"]:
+        return sum(h["stake"] for h in rnd["hands"].get(k, [])) + rnd["ins_amt"].get(k, 0)
+    return rnd["bets"].get(k, 0)
+
+
+def holdings(state, uid):
+    return state["chips"][str(uid)] + in_play(state, uid)
+
+
+def _void_round(state):
+    """Give every chip on the table back (used when the table closes in the middle of a round)."""
+    rnd = state["rnd"]
+    if not rnd or rnd.get("done"):
+        return
+    for k in state["chips"]:
+        state["chips"][k] += in_play(state, int(k))
+    rnd["done"] = True
+
+
+# ---------------------------------------------------------------------------------------------
 # Setting up
 # ---------------------------------------------------------------------------------------------
 def new_table(players, games, now):
@@ -171,14 +248,16 @@ def new_table(players, games, now):
     n = len(seats)
     games = max(1, int(games))
     zero = {str(u): 0 for u in seats}
+    start = {str(u): START_CHIPS for u in seats}
     state = {"players": seats, "n0": n, "games": games, "rpd": ROUNDS_PER_DEALER,
              "sched": [seats[i % n] for i in range(games * n)],       # who deals each block of 5 rounds
              "block": 0, "rb": 0, "round_no": 0, "left": [], "timeouts": {},
-             "scores": dict(zero), "gnet": dict(zero), "gdone": [],
+             "chips": start, "scores": dict(zero), "lastbet": {}, "gdone": [],
              "shoe": new_shoe(), "reshuffles": 0, "phase": "deal", "rnd": None, "last": None,
              "log": [], "n": 0, "deadline": 0, "summary": None, "winner": None, "reason": ""}
     _log(state, seats[0], "start")
     _next_round(state, now)
+    _pump(state, now)
     return state
 
 
@@ -212,31 +291,35 @@ def _begin_round(state, now):
         _log(state, None, "shuffle")
     dealer = state["sched"][state["block"]]
     state["rnd"] = {"no": state["round_no"], "dealer": dealer, "order": _seat_order(state, dealer), "hands": {},
-                    "dealer_cards": [], "hole_up": False, "ins": {}, "turn": None, "dbj": False, "shuffled": shuffled}
-    state["phase"] = "deal"
+                    "dealer_cards": [], "hole_up": False, "ins": {}, "ins_amt": {}, "bets": {}, "sit": [],
+                    "turn": None, "dbj": False, "shuffled": shuffled, "done": False}
+    state["phase"] = "deal"                             # "deal" = bets, then the dealer presses Deal
     state["deadline"] = now + DEAL_MS
     _log(state, dealer, "round", state["rb"])
-    _pump(state, now)
 
 
 def _close_game(state):
-    """A game ends when every player has dealt 5 rounds. Whoever scored most in it wins that game."""
+    """A game ends when every player has dealt 5 rounds. Whoever holds the most chips wins that game; then
+    everybody gets a fresh stack for the next one."""
     live = [u for u in state["players"] if u not in state["left"]]
-    net = {k: v for k, v in state["gnet"].items()}
+    net = {k: v - START_CHIPS for k, v in state["chips"].items()}
     best = max((net[str(u)] for u in live), default=0)
     top = [u for u in live if net[str(u)] == best]
     state["gdone"].append({"no": len(state["gdone"]) + 1, "net": net, "winner": top[0] if len(top) == 1 else None})
-    state["gnet"] = {k: 0 for k in state["gnet"]}
+    for k, v in net.items():
+        state["scores"][k] += v
+    state["chips"] = {k: START_CHIPS for k in state["chips"]}
 
 
 def _finish(state, now, reason, early=False):
+    _void_round(state)
     state["phase"] = "over"
     state["deadline"] = 0
     live = _active(state)
     rows = []
     for u in state["players"]:
         k = str(u)
-        rows.append({"id": u, "score": state["scores"][k], "wins": sum(1 for g in state["gdone"] if g["winner"] == u),
+        rows.append({"id": u, "score": state["scores"][k] + state["chips"][k] - START_CHIPS, "wins": sum(1 for g in state["gdone"] if g["winner"] == u),
                      "left": u in state["left"]})
     pool = [r for r in rows if not r["left"]]
     pool.sort(key=lambda r: (r["wins"], r["score"]), reverse=True)
@@ -256,10 +339,12 @@ def _finish(state, now, reason, early=False):
 # Dealing and the round
 # ---------------------------------------------------------------------------------------------
 def _deal(state, now):
+    """Deal to everybody who bet. Anybody who has not bet sits this round out."""
     rnd = state["rnd"]
-    order = rnd["order"]
+    order = [u for u in rnd["order"] if rnd["bets"].get(str(u), 0) > 0]
+    rnd["in"] = order
     for u in order:
-        rnd["hands"][str(u)] = [_new_hand()]
+        rnd["hands"][str(u)] = [_new_hand(rnd["bets"][str(u)])]
     for _ in range(2):                                  # one card at a time, round the table, dealer last
         for u in order:
             rnd["hands"][str(u)][0]["cards"].append(_draw(state))
@@ -362,7 +447,7 @@ def _dealer_draw(state, now):
 # Settling
 # ---------------------------------------------------------------------------------------------
 def hand_net(h, dealer_best, dealer_bust, dealer_bj):
-    """Half points won (+) or lost (-) on one hand, and a word for it."""
+    """Chips won (+) or lost (-) on one hand, and a word for it. A blackjack pays 3 to 2 (stakes are even)."""
     best = count(h["cards"])[0]
     stake = h["stake"]
     if best > 21:
@@ -380,32 +465,34 @@ def hand_net(h, dealer_best, dealer_bust, dealer_bj):
 
 
 def _settle_round(state, now):
+    """Pay the table. Each hand's stake goes back to its owner with the winnings (or is kept by the bank when the
+    hand lost); the bank's holdings change by the opposite of what the players made."""
     rnd = state["rnd"]
     dcards = rnd["dealer_cards"]
     dbest = count(dcards)[0]
     dbust, dbj = dbest > 21, rnd["dbj"]
     rows, total = [], 0
-    for u in rnd["order"]:
+    for u in rnd["in"]:
         k = str(u)
         hands, net = [], 0
         for h in rnd["hands"][k]:
             n, tag = hand_net(h, dbest, dbust, dbj)
             net += n
+            state["chips"][k] += h["stake"] + n                 # stake back, plus the win (a loss leaves nothing)
             hands.append({"cards": [pair(c) for c in h["cards"]], "text": total_text(h["cards"]), "stake": h["stake"],
                           "net": n, "tag": tag, "doubled": h["doubled"]})
         ins = None
-        if rnd["ins"].get(k):
-            ins = INSURANCE * 2 if dbj else -INSURANCE
+        if rnd["ins_amt"].get(k):
+            amt = rnd["ins_amt"][k]
+            ins = amt * 2 if dbj else -amt                      # insurance pays 2 to 1
+            if dbj:
+                state["chips"][k] += amt * 3
             net += ins
         rows.append({"id": u, "hands": hands, "ins": ins, "net": net})
         total += net
     dealer_net = -total
-    for r in rows:
-        state["scores"][str(r["id"])] += r["net"]
-        state["gnet"][str(r["id"])] += r["net"]
-    d = str(rnd["dealer"])
-    state["scores"][d] += dealer_net
-    state["gnet"][d] += dealer_net
+    state["chips"][str(rnd["dealer"])] += dealer_net
+    rnd["done"] = True
     state["last"] = {"round": rnd["no"], "dealer": rnd["dealer"], "dealer_cards": [pair(c) for c in dcards],
                      "dealer_text": total_text(dcards), "dealer_bj": dbj, "dealer_bust": dbust, "rows": rows,
                      "dealer_net": dealer_net}
@@ -427,17 +514,34 @@ def _leave(state, uid, now):
     _pump(state, now)
 
 
+def _skip_round(state, now):
+    """Nobody can or wants to bet: the round is not played (it still counts towards the dealer's five)."""
+    _log(state, state["rnd"]["dealer"], "no_bets")
+    state["rnd"]["done"] = True
+    _next_round(state, now)
+
+
 def _pump(state, now):
-    """Play on for anybody who has left the table: they stand, decline insurance, and a dealer who left deals
-    and draws without waiting."""
+    """Play on for anybody who has left the table: they sit out, stand, decline insurance, and a dealer who left
+    deals and draws without waiting. Also skips a round in which nobody is betting."""
     for _ in range(400):
         ph = state["phase"]
         if ph == "over":
             return
         rnd = state["rnd"]
         left = state["left"]
-        if ph == "deal" and rnd["dealer"] in left:
-            _deal(state, now)
+        if ph == "deal":
+            for u in _undecided(state):
+                if u in left:
+                    rnd["sit"].append(u)
+            if _undecided(state):
+                return                                  # still waiting for somebody's bet
+            if not rnd["bets"]:
+                _skip_round(state, now)
+            elif rnd["dealer"] in left:
+                _deal(state, now)
+            else:
+                return                                  # the dealer presses Deal
         elif ph == "insurance":
             gone = [k for k, v in rnd["ins"].items() if v is None and int(k) in left]
             if not gone:
@@ -472,6 +576,7 @@ def settle(state, now):
         ph, rnd = state["phase"], state["rnd"]
         if ph == "result":
             _next_round(state, now)
+            _pump(state, now)
             continue
         if ph == "insurance":
             for k, v in rnd["ins"].items():
@@ -481,9 +586,23 @@ def settle(state, now):
             _pump(state, now)
             continue
         if ph == "deal":
-            who = rnd["dealer"]
-            gone = _miss(state, who, now)
-            _deal(state, now)
+            # Time is up for betting: whoever has not decided sits out (and misses a turn); then the cards go out.
+            und = _undecided(state)
+            gone = []
+            for u in und:
+                rnd["sit"].append(u)
+                if _miss(state, u, now):
+                    gone.append(u)
+            if rnd["bets"]:
+                if not und and rnd["dealer"] not in state["left"] and _miss(state, rnd["dealer"], now):
+                    gone.append(rnd["dealer"])          # everyone was ready and the dealer sat on the button
+                _deal(state, now)
+            else:
+                _skip_round(state, now)
+            for u in gone:
+                _leave(state, u, now)
+            _pump(state, now)
+            continue
         elif ph == "play":
             who = rnd["turn"]["u"]
             gone = _miss(state, who, now)
@@ -513,22 +632,54 @@ def can_split(state, uid, h):
             and value(h["cards"][0]) == value(h["cards"][1]) and not h["ace"])
 
 
+def _afford(state, uid, extra):
+    """None if the player can put `extra` more chips on the table and the bank can cover the bigger hand,
+    otherwise the reason why not."""
+    if state["chips"][str(uid)] < extra:
+        return "Not enough chips"
+    if _free_bank(state) < extra:
+        return "The bank cannot cover it"
+    return None
+
+
+def insurance_cost(state, uid):
+    return state["rnd"]["hands"][str(uid)][0]["stake"] // 2
+
+
 def options(state, uid):
     ph, rnd = state["phase"], state["rnd"]
     if ph == "over" or uid in state["left"] or uid not in state["players"]:
         return []
+    k = str(uid)
     out = []
-    if ph == "deal" and rnd["dealer"] == uid:
-        out.append({"a": "deal"})
-    elif ph == "insurance" and rnd["ins"].get(str(uid), True) is None:
-        out += [{"a": "ins:yes", "cost": INSURANCE}, {"a": "ins:no"}]
+    if ph == "deal":
+        if rnd["dealer"] == uid:
+            if rnd["bets"]:
+                out.append({"a": "deal"})
+        elif uid in _eligible(state):
+            out += [{"a": "bet", "min": MIN_BET, "max": bet_cap(state, uid), "cur": rnd["bets"].get(k, 0),
+                     "last": state["lastbet"].get(k, 0)}, {"a": "sit"}]
+    elif ph == "insurance" and rnd["ins"].get(k, True) is None:
+        cost = insurance_cost(state, uid)
+        yes = {"a": "ins:yes", "cost": cost}
+        if state["chips"][k] < cost:
+            yes["off"] = "Not enough chips"
+        out += [yes, {"a": "ins:no"}]
     elif ph == "play" and rnd["turn"]["u"] == uid:
         h = _cur(state)
         out += [{"a": "hit"}, {"a": "stand"}]
         if can_double(h):
-            out.append({"a": "double"})
+            d = {"a": "double", "cost": h["stake"]}
+            why = _afford(state, uid, h["stake"])
+            if why:
+                d["off"] = why
+            out.append(d)
         if can_split(state, uid, h):
-            out.append({"a": "split"})
+            sp = {"a": "split", "cost": h["stake"]}
+            why = _afford(state, uid, h["stake"])
+            if why:
+                sp["off"] = why
+            out.append(sp)
     elif ph == "dealer" and rnd["dealer"] == uid:
         out.append({"a": "draw"})
     elif ph == "result" and rnd["dealer"] == uid:
@@ -553,10 +704,48 @@ def act(state, uid, action, now):
             return "Only the dealer deals."
         if ph != "deal":
             return "The cards are already dealt."
+        if not rnd["bets"]:
+            return "Wait for at least one bet before dealing."
         _deal(state, now)
+    elif action.startswith("bet:") or action == "sit":
+        if ph != "deal":
+            return "Bets are closed for this round."
+        if rnd["dealer"] == uid:
+            return "The dealer is the bank and does not bet."
+        if uid not in _eligible(state):
+            return "You cannot bet this round (not enough chips, or the bank is too small)."
+        old = rnd["bets"].pop(k, 0)
+        state["chips"][k] += old                        # take the old bet back before deciding
+        if action == "sit":
+            if uid not in rnd["sit"]:
+                rnd["sit"].append(uid)
+            _log(state, uid, "sit")
+        else:
+            try:
+                amt = int(action[4:])
+            except ValueError:
+                amt = -1
+            cap = bet_cap(state, uid)
+            if amt < MIN_BET or amt % 2 or amt > cap:
+                if old:
+                    state["chips"][k] -= old            # keep the old bet
+                    rnd["bets"][k] = old
+                return f"Bet an even number of chips from {MIN_BET} to {cap}."
+            state["chips"][k] -= amt
+            rnd["bets"][k] = amt
+            state["lastbet"][k] = amt
+            if uid in rnd["sit"]:
+                rnd["sit"].remove(uid)
+            _log(state, uid, "bet", amt)
     elif action in ("ins:yes", "ins:no"):
         if ph != "insurance" or rnd["ins"].get(k, True) is not None:
             return "Insurance is not on offer."
+        if action == "ins:yes":
+            cost = insurance_cost(state, uid)
+            if state["chips"][k] < cost:
+                return "You do not have enough chips for insurance."
+            state["chips"][k] -= cost
+            rnd["ins_amt"][k] = cost
         rnd["ins"][k] = action == "ins:yes"
         _log(state, uid, "insure" if rnd["ins"][k] else "no_insure")
         _check_insurance(state, now)
@@ -580,6 +769,10 @@ def act(state, uid, action, now):
         elif action == "double":
             if not can_double(h):
                 return "You can only double on your first two cards."
+            why = _afford(state, uid, h["stake"])
+            if why:
+                return why + " to double."
+            state["chips"][k] -= h["stake"]
             h["stake"] *= 2
             h["doubled"] = True
             h["cards"].append(_draw(state))
@@ -589,8 +782,12 @@ def act(state, uid, action, now):
         else:
             if not can_split(state, uid, h):
                 return "You can only split two cards of equal value (up to %d hands)." % MAX_HANDS
+            why = _afford(state, uid, h["stake"])
+            if why:
+                return why + " to split."
+            state["chips"][k] -= h["stake"]
             ace = rank(h["cards"][0]) == 1
-            second = _new_hand()
+            second = _new_hand(h["stake"])
             second["cards"] = [h["cards"][1]]
             second["split"] = h["split"] = True
             second["ace"] = h["ace"] = ace
@@ -638,6 +835,11 @@ def info(state):
             "nudge": ph in ("deal", "play", "dealer", "insurance")}
 
 
+def owes_bet(state, uid):
+    """True while this player still has to bet or sit out the round."""
+    return state["phase"] == "deal" and uid in _undecided(state)
+
+
 def _hand_view(state, u, i, h):
     rnd = state["rnd"]
     best, soft = count(h["cards"])
@@ -662,8 +864,20 @@ def public_view(state, uid, now):
     players = []
     for u in state["players"]:
         k = str(u)
-        row = {"id": u, "left": u in state["left"], "score": state["scores"][k], "gnet": state["gnet"][k],
-               "wins": sum(1 for g in state["gdone"] if g["winner"] == u), "dealer": bool(rnd) and rnd["dealer"] == u}
+        hold = holdings(state, u)
+        row = {"id": u, "left": u in state["left"], "chips": state["chips"][k], "in_play": in_play(state, u),
+               "hold": hold, "gnet": hold - START_CHIPS, "score": state["scores"][k] + hold - START_CHIPS,
+               "wins": sum(1 for g in state["gdone"] if g["winner"] == u), "dealer": bool(rnd) and rnd["dealer"] == u,
+               "ins_amt": rnd["ins_amt"].get(k, 0) if rnd and not rnd.get("done") else 0}
+        if rnd and rnd["dealer"] != u and ph != "over":
+            if k in rnd["hands"]:
+                row["bst"] = "in"
+            elif ph == "deal":
+                row["bst"] = ("bet" if k in rnd["bets"] else "sit" if u in rnd["sit"]
+                              else "wait" if u in _eligible(state) else "out")
+            else:
+                row["bst"] = "sit"
+            row["bet"] = sum(h["stake"] for h in rnd["hands"][k]) if k in rnd["hands"] else rnd["bets"].get(k, 0)
         if rnd and k in rnd["hands"]:
             row["hands"] = [_hand_view(state, u, i, h) for i, h in enumerate(rnd["hands"][k])]
         if rnd and k in rnd["ins"]:
@@ -688,9 +902,11 @@ def public_view(state, uid, now):
         cur = rnd["turn"]
     out = {"phase": ph, "games": state["games"], "game": min(game_no(state), state["games"]), "rpd": state["rpd"],
            "rb": state["rb"], "round_no": state["round_no"], "dealer": dealer, "dealer_id": rnd["dealer"] if rnd else None,
-           "players": players, "options": options(state, uid), "turn": cur,
+           "players": players, "order": list(rnd["order"]) if rnd else [], "options": options(state, uid), "turn": cur,
            "deadline_in": max(0, state["deadline"] - now) if state["deadline"] else 0, "total_ms": total_ms,
            "log": state["log"][-10:], "last": state["last"], "gdone": state["gdone"], "summary": state["summary"],
            "shoe": len(state["shoe"]), "shuffled": bool(rnd and rnd.get("shuffled")), "n": state["n"],
-           "unit": UNIT, "max_hands": MAX_HANDS, "winner": state["winner"]}
+           "start": START_CHIPS, "min_bet": MIN_BET, "max_hands": MAX_HANDS, "winner": state["winner"],
+           "bank": state["chips"][str(rnd["dealer"])] if rnd else 0, "table_max": table_max(state) if rnd else 0,
+           "round_done": bool(rnd and rnd.get("done"))}
     return out

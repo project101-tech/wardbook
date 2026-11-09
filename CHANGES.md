@@ -1,24 +1,19 @@
-# Blackjack (Hangout → Games)
+# Blackjack (Hangout → Games): chips, bets and "your seat at the bottom"
 
-**Run `python manage.py migrate`** (0019 only updates the game choices; no table changes).
-No new packages or settings.
+This zip contains the **whole** Blackjack feature (it replaces the earlier Blackjack zip; apply it on top of your repo either way).
+**Run `python manage.py migrate`** (0019 only updates the game choices; no table changes). No new packages or settings.
 
-## How it works
-- Pick **Blackjack** in Games, choose **How many games?** (1, 2, 3, 4, 5 or 10), invite 1–6 people (2–7 at the table). It starts when everyone answers or the host presses Start.
-- Seats are shuffled; a random player deals first. Each player is the dealer for **5 rounds**, then the deal moves to the next seat. When everyone has dealt 5 rounds, that is **one game**.
-- The dealer presses **Deal cards**. Everyone's cards are on the table with names underneath. Players act in seat order (clockwise from the dealer's left): Hit, Stand, Double, Split.
-- Winner of a game = most points that game. Winner of the match = most games won (ties: total points; still tied = draw).
-- Points, not money: win +1, blackjack +1.5, push 0, loss −1, insurance ½ (scores are stored in half-points).
+## What is new in this update
+- **Betting.** Everyone starts every game with 1,000 play chips (no real money). Before each deal, every player (not the dealer) bets any **even** number of chips from 10 up to the table limit, using the bet box (number field, +10 / +50 / +100 / +500, Last, Max, Clear) or sits the round out. A bet can be changed until the dealer deals.
+- **The dealer is the bank.** The dealer does not bet; they collect losing bets and pay winning ones. The **table limit** is a share of the bank (bank ÷ (2 × players)), so the bank can always pay. Double / Split are only offered if you have the chips *and* the bank can cover the bigger hand.
+- **Standard payouts, settled after every round:** win 1:1, blackjack 3:2, push returns the bet, loss loses the bet, double and each split hand on their own (larger) bet, insurance costs half the bet and pays 2:1. Chips only move between players.
+- **Live holdings.** A "Your holdings / On the table / This game" strip (the dealer sees "Your bank / Table limit / This game"), chips under every name on the table, and a Holdings table for everyone.
+- **Your seat is at the bottom.** On your screen your own cards are always in front of you at the bottom; the dealer is at the top and the other players sit in turn order in between. If you are the dealer, you sit at the bottom and the players face you.
+- **Games.** Every game starts everyone on a fresh 1,000 chips; the game goes to whoever holds the most at the end. Match winner = most games won (ties: total chips won; still tied = draw). A player who runs out of chips sits out until the next game.
+- Players who do not bet in time sit that round out (and miss a turn; three missed turns in a row removes a player). A round in which nobody bets is skipped (it still counts as one of the dealer's five).
 
-## Rules implemented
-- 6-deck shoe, reshuffled between rounds when 25% is left. J/Q/K = 10. Ace = 1 or 11 (best total is used automatically; soft totals show as "7/17").
-- Blackjack = Ace + ten-value card as first two cards (not after a split), pays 3:2. Dealer peeks on Ace/ten upcard.
-- Insurance offered when dealer shows an Ace: half a point, pays 2:1.
-- Dealer draws to 16 and stands on every 17 (including soft 17). Dealer does not draw if every hand is bust or blackjack.
-- Double on first two cards (also after a split). Split any equal-value pair (10/J/Q/K count as equal), up to 4 hands; split aces get one card each and cannot be re-split; 21 after a split is not blackjack. No surrender.
-- Bust loses even if the dealer also busts. Equal totals push.
-- Timers: dealer 45s to deal, insurance 25s, 40s per turn (auto-stand). Three missed turns in a row removes a player; **Leave table** is always available. The match ends if fewer than two players remain.
-- The shoe and the dealer's face-down card are never sent to other players' browsers.
+## Rules (unchanged)
+6-deck shoe; J/Q/K = 10; Ace = 1 or 11 (best total used automatically); dealer peeks on Ace/ten and stands on all 17s (including soft 17); dealer doesn't draw if everyone busted or has blackjack; double on first two cards (also after a split); split equal-value cards up to 4 hands, split aces get one card each; no surrender; bust loses even if the dealer busts; a 21 after a split is not blackjack. Timers: bets+deal 45s, insurance 25s, turn 40s. A game = every player has dealt 5 rounds; the host picks how many games (1, 2, 3, 4, 5 or 10) when inviting. The shoe and the dealer's face-down card are never sent to other players' browsers.
 
 ## Files
 New: `core/blackjack_engine.py`, `core/test_blackjack.py`, `core/migrations/0019_blackjack.py`, `static/js/games-blackjack.js`

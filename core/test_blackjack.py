@@ -14,7 +14,8 @@ from . import blackjack_engine as bj
 from .models import GameChallenge, GameParticipant, GameSession, ResidentProfile
 from .testing import join
 
-U = bj.UNIT          # one point, in half points
+U = 10               # the bet every helper table uses (even, so 3 to 2 and insurance come out whole)
+START = bj.START_CHIPS
 
 
 def C(text):
@@ -22,17 +23,35 @@ def C(text):
     return bj.cid({"A": 1, "J": 11, "Q": 12, "K": 13}.get(text[:-1]) or int(text[:-1]), text[-1])
 
 
-def table(n=2, games=1, hands=(), dealer=("2C", "3C"), then=()):
+def table(n=2, games=1, hands=(), dealer=("2C", "3C"), then=(), bet=U):
     """A table of n players where the first round's cards are fixed.
     hands: the two cards of each player in seat order (left of the dealer first); dealer: (up card, hole card);
     then: the cards drawn after the deal, in order."""
     ids = list(range(1, n + 1))
     st = bj.new_table(ids, games, 0)
     order = st["rnd"]["order"]
+    for u in order:
+        go(st, u, f"bet:{bet}")
     hands = list(hands) or [("2D", "3D")] * len(order)
     seq = [C(h[0]) for h in hands] + [C(dealer[0])] + [C(h[1]) for h in hands] + [C(dealer[1])] + [C(x) for x in then]
     st["shoe"].extend(reversed(seq))
     return st
+
+
+def has(st, uid, action):
+    """Is this action on offer (and not greyed out)?"""
+    return any(o["a"] == action and not o.get("off") for o in bj.options(st, uid))
+
+
+def net(st, uid):
+    """Chips won (+) or lost (-) so far in this game, counting chips still on the table."""
+    return bj.holdings(st, uid) - START
+
+
+def bet_all(st, amount=U):
+    for u in st["rnd"]["order"]:
+        if any(o["a"] == "bet" for o in bj.options(st, u)):
+            go(st, u, f"bet:{amount}")
 
 
 def go(st, uid, action, now=0):
@@ -108,7 +127,7 @@ class DealingTests(SimpleTestCase):
         st = table(3)
         other = st["rnd"]["order"][0]
         self.assertEqual(bj.act(st, other, "deal", 0), "Only the dealer deals.")
-        self.assertEqual(bj.options(st, other), [])
+        self.assertEqual([o["a"] for o in bj.options(st, other)], ["bet", "sit"])
         self.assertEqual(bj.options(st, st["rnd"]["dealer"]), [{"a": "deal"}])
 
     def test_cannot_deal_twice(self):
@@ -252,14 +271,14 @@ class BlackjackTests(SimpleTestCase):
         finish_round(st)                                                        # dealer 11 draws a ten: 21 in three cards
         self.assertEqual(bj.count(st["rnd"]["dealer_cards"])[0], 21)
         rows = {r["id"]: r for r in st["last"]["rows"]}
-        self.assertEqual(rows[a]["net"], 3)                                     # blackjack is paid, a three-card 21 does not tie it
+        self.assertEqual(rows[a]["net"], U * 3 // 2)                                     # blackjack is paid, a three-card 21 does not tie it
         self.assertEqual(rows[b]["net"], -U)
 
     def test_dealer_does_not_draw_when_the_only_hands_left_are_blackjacks(self):
         st = table(2, hands=[("AD", "KD")], dealer=("5H", "6H"), then=("10C",))
         deal(st)
         self.assertEqual(len(st["rnd"]["dealer_cards"]), 2)
-        self.assertEqual(last(st)["net"], 3)
+        self.assertEqual(last(st)["net"], U * 3 // 2)
 
     def test_twenty_one_in_three_cards_pushes_a_dealer_twenty_one(self):
         st = table(2, hands=[("7D", "7C")], dealer=("5H", "6H"), then=("7S", "10C"))
@@ -342,7 +361,7 @@ class InsuranceTests(SimpleTestCase):
         self.assertEqual(last(st)["net"], 0 + INS * 2)                          # hand pushes, insurance pays 1 point
 
 
-INS = bj.INSURANCE
+INS = U // 2
 
 
 class DoubleTests(SimpleTestCase):
@@ -350,7 +369,7 @@ class DoubleTests(SimpleTestCase):
         st = table(2, hands=[("5D", "6D")], dealer=("10H", "8H"), then=("10C", "2C"))
         p = st["rnd"]["order"][0]
         deal(st)
-        self.assertIn({"a": "double"}, bj.options(st, p))
+        self.assertTrue(has(st, p, "double"))
         go(st, p, "double")                                                     # 11 + 10 = 21
         self.assertEqual(len(st["rnd"]["hands"][str(p)][0]["cards"]), 3)
         self.assertEqual(st["phase"], "result")
@@ -368,7 +387,7 @@ class DoubleTests(SimpleTestCase):
         p = st["rnd"]["order"][0]
         deal(st)
         go(st, p, "hit")
-        self.assertNotIn({"a": "double"}, bj.options(st, p))
+        self.assertFalse(has(st, p, "double"))
         self.assertTrue(bj.act(st, p, "double", 0))
 
     def test_double_after_split_is_allowed(self):
@@ -376,7 +395,7 @@ class DoubleTests(SimpleTestCase):
         p = st["rnd"]["order"][0]
         deal(st)
         go(st, p, "split")                                                      # hands: 8+3, 8
-        self.assertIn({"a": "double"}, bj.options(st, p))
+        self.assertTrue(has(st, p, "double"))
         go(st, p, "double")                                                     # 11 + 9... draws next card
         self.assertTrue(st["rnd"]["hands"][str(p)][0]["doubled"])
 
@@ -386,7 +405,7 @@ class SplitTests(SimpleTestCase):
         st = table(2, hands=[("8D", "8C")], dealer=("10H", "7H"), then=("3C", "2S", "10S"))
         p = st["rnd"]["order"][0]
         deal(st)
-        self.assertIn({"a": "split"}, bj.options(st, p))
+        self.assertTrue(has(st, p, "split"))
         go(st, p, "split")
         hands = st["rnd"]["hands"][str(p)]
         self.assertEqual(len(hands), 2)
@@ -405,10 +424,10 @@ class SplitTests(SimpleTestCase):
         st = table(2, hands=[("KD", "QC")], dealer=("10H", "7H"), then=("2C", "2S"))
         p = st["rnd"]["order"][0]
         deal(st)
-        self.assertIn({"a": "split"}, bj.options(st, p))
+        self.assertTrue(has(st, p, "split"))
         st = table(2, hands=[("9D", "8C")], dealer=("10H", "7H"))
         deal(st)
-        self.assertNotIn({"a": "split"}, bj.options(st, st["rnd"]["order"][0]))
+        self.assertFalse(has(st, st["rnd"]["order"][0], "split"))
         self.assertTrue(bj.act(st, st["rnd"]["order"][0], "split", 0))
 
     def test_split_aces_get_one_card_each_and_stand(self):
@@ -462,11 +481,11 @@ class RoundResultTests(SimpleTestCase):
         deal(st)
         go(st, a, "stand"); go(st, b, "stand")
         self.assertEqual(st["phase"], "result")
-        self.assertEqual(sum(st["scores"].values()), 0)
-        self.assertEqual(st["scores"][str(a)], U)                               # 19 beats 18
-        self.assertEqual(st["scores"][str(b)], -U)                              # 17 loses
-        self.assertEqual(st["scores"][str(c)], 3)                               # blackjack
-        self.assertEqual(st["scores"][str(st["rnd"]["dealer"])], -(U - U + 3))
+        self.assertEqual(sum(bj.holdings(st, u) for u in st["players"]), START * 4)   # chips only move between players
+        self.assertEqual(net(st, a), U)                                         # 19 beats 18
+        self.assertEqual(net(st, b), -U)                                        # 17 loses
+        self.assertEqual(net(st, c), U * 3 // 2)                                # blackjack
+        self.assertEqual(net(st, st["rnd"]["dealer"]), -(U * 3 // 2))
 
     def test_result_waits_then_the_next_round_opens_with_the_same_dealer(self):
         st = table(2, hands=[("10D", "9D")], dealer=("10H", "7H"))
@@ -489,7 +508,9 @@ class RoundResultTests(SimpleTestCase):
 class MatchStructureTests(SimpleTestCase):
     def play_round_quickly(self, st):
         d = st["rnd"]["dealer"]
-        deal(st)
+        bet_all(st)
+        if st["phase"] == "deal":
+            deal(st)
         while st["phase"] not in ("result", "over"):
             if st["phase"] == "insurance":
                 for k, v in st["rnd"]["ins"].items():
@@ -506,7 +527,8 @@ class MatchStructureTests(SimpleTestCase):
         dealers = []
         while st["phase"] != "over":
             dealers.append(self.play_round_quickly(st))
-            go(st, dealers[-1], "next")
+            if st["phase"] == "result":
+                go(st, dealers[-1], "next")
         return st, dealers
 
     def test_each_player_deals_five_rounds_then_the_deal_moves_on(self):
@@ -556,7 +578,6 @@ class MatchStructureTests(SimpleTestCase):
 
     def test_a_tied_game_has_no_winner(self):
         st = bj.new_table([1, 2], 1, 0)
-        st["gnet"] = {"1": 0, "2": 0}
         bj._close_game(st)
         self.assertIsNone(st["gdone"][0]["winner"])
 
@@ -605,6 +626,7 @@ class TimerAndLeavingTests(SimpleTestCase):
         gone = st["rnd"]["order"][0]
         go(st, gone, "leave")
         self.assertEqual(st["phase"], "deal")
+        bet_all(st)
         deal(st)
         while st["phase"] not in ("result",):
             if st["phase"] == "insurance":
@@ -615,11 +637,12 @@ class TimerAndLeavingTests(SimpleTestCase):
                 go(st, st["rnd"]["turn"]["u"], "stand")
             elif st["phase"] == "dealer":
                 go(st, st["rnd"]["dealer"], "draw")
-        self.assertEqual(sum(st["scores"].values()), 0)
+        self.assertEqual(sum(bj.holdings(st, u) for u in st["players"]), START * 3)
 
     def test_dealer_leaving_mid_round_does_not_stall_the_table(self):
         st = bj.new_table([1, 2, 3], 1, 0)
         d = st["rnd"]["dealer"]
+        bet_all(st)
         deal(st)
         go(st, d, "leave")
         for _ in range(30):
@@ -680,8 +703,290 @@ class PrivacyTests(SimpleTestCase):
         self.assertEqual(row["ins"], "answered")
 
 
+class BettingTests(SimpleTestCase):
+    """Bets, holdings and payouts. Bets are even (so 3 to 2 and insurance come out whole), from MIN_BET to the table limit."""
+
+    def fresh(self, n=3):
+        st = bj.new_table(list(range(1, n + 1)), 1, 0)
+        return st, st["rnd"]["dealer"], st["rnd"]["order"]
+
+    def rig(self, st, hands, dealer, then=()):
+        order = [u for u in st["rnd"]["order"] if str(u) in st["rnd"]["bets"]]
+        seq = [C(h[0]) for h in hands] + [C(dealer[0])] + [C(h[1]) for h in hands] + [C(dealer[1])] + [C(x) for x in then]
+        st["shoe"].extend(reversed(seq))
+
+    def test_everybody_starts_with_the_same_stack_and_the_dealer_does_not_bet(self):
+        st, d, order = self.fresh(4)
+        self.assertEqual(set(st["chips"].values()), {bj.START_CHIPS})
+        self.assertEqual(bj.act(st, d, "bet:20", 0), "The dealer is the bank and does not bet.")
+        self.assertEqual([o["a"] for o in bj.options(st, d)], [])             # nothing to press until a bet is in
+        self.assertEqual(bj.act(st, d, "deal", 0), "Wait for at least one bet before dealing.")
+
+    def test_bet_is_taken_from_the_stack_but_holdings_do_not_change(self):
+        st, d, order = self.fresh()
+        p = order[0]
+        go(st, p, "bet:50")
+        self.assertEqual((st["chips"][str(p)], bj.in_play(st, p), bj.holdings(st, p)), (950, 50, 1000))
+        self.assertEqual(bj.public_view(st, p, 0)["players"][st["players"].index(p)]["bet"], 50)
+
+    def test_bet_can_be_changed_and_sat_out_until_the_deal(self):
+        st, d, order = self.fresh()
+        p = order[0]
+        go(st, p, "bet:50"); go(st, p, "bet:20")
+        self.assertEqual((st["chips"][str(p)], st["rnd"]["bets"][str(p)]), (980, 20))      # the 50 went back first
+        go(st, p, "sit")
+        self.assertEqual((st["chips"][str(p)], st["rnd"]["bets"]), (1000, {}))
+        go(st, p, "bet:30")
+        self.assertEqual(st["chips"][str(p)], 970)
+
+    def test_bad_bets_are_refused_and_an_old_bet_survives_them(self):
+        st, d, order = self.fresh()
+        p = order[0]
+        go(st, p, "bet:40")
+        cap = bj.bet_cap(st, p)
+        for bad in ("bet:7", "bet:8", "bet:0", "bet:-10", "bet:abc", "bet:", f"bet:{cap + 2}", "bet:1e3", "bet:20.5"):
+            self.assertTrue(bj.act(st, p, bad, 0), bad)
+        self.assertEqual((st["chips"][str(p)], st["rnd"]["bets"][str(p)]), (960, 40))
+
+    def test_table_limit_is_a_share_of_the_bank_and_bets_stop_there(self):
+        st, d, order = self.fresh(4)                                           # three players: 1000 // 6 = 166, even -> 166
+        self.assertEqual(bj.table_max(st), 166)
+        p = order[0]
+        self.assertEqual(bj.act(st, p, "bet:168", 0), "Bet an even number of chips from 10 to 166.")
+        go(st, p, "bet:166")
+        self.assertEqual(bj.options(st, p)[0]["max"], 166)
+
+    def test_a_player_cannot_bet_more_than_they_hold(self):
+        st, d, order = self.fresh(2)
+        p = order[0]
+        st["chips"][str(p)] = 30
+        self.assertEqual(bj.bet_cap(st, p), 30)
+        self.assertTrue(bj.act(st, p, "bet:32", 0))
+        go(st, p, "bet:30")
+        self.assertEqual(st["chips"][str(p)], 0)
+
+    def test_nobody_can_bet_when_broke_or_when_the_bank_is_too_small(self):
+        st, d, order = self.fresh(3)
+        a, b = order
+        st["chips"][str(a)] = 8                                                # under the minimum bet
+        self.assertNotIn(a, bj._eligible(st))
+        self.assertEqual(bj.options(st, a), [])
+        self.assertTrue(bj.act(st, a, "bet:10", 0))
+        st["chips"][str(d)] = 30                                               # 30 // 4 = 7: below the minimum
+        self.assertEqual(bj.table_max(st), 6)
+        self.assertEqual(bj.options(st, b), [])
+
+    def test_players_who_did_not_bet_sit_out_and_get_no_cards(self):
+        st, d, order = self.fresh(3)
+        a, b = order
+        go(st, a, "bet:20")
+        self.rig(st, [("9D", "9C")], ("10H", "7H"))
+        deal(st)
+        self.assertEqual(list(st["rnd"]["hands"]), [str(a)])
+        view = bj.public_view(st, b, 0)
+        self.assertEqual([p for p in view["players"] if p["id"] == b][0]["bst"], "sit")
+        self.assertEqual(bj.options(st, b), [])                                 # bets are closed
+        self.assertEqual(bj.act(st, b, "bet:20", 0), "Bets are closed for this round.")
+
+    def test_payouts_win_loss_push_blackjack_at_a_custom_bet(self):
+        st, d, order = self.fresh(4)
+        a, b, c = order
+        go(st, a, "bet:50"); go(st, b, "bet:30"); go(st, c, "bet:20")
+        self.rig(st, [("10D", "9D"), ("10C", "7C"), ("AD", "KD")], ("10H", "8H"))
+        deal(st)
+        go(st, a, "stand"); go(st, b, "stand")
+        self.assertEqual(st["phase"], "result")
+        self.assertEqual([bj.holdings(st, u) - START for u in (a, b, c, d)], [50, -30, 30, -50])    # 19 beats 18, 17 loses, 3:2 on 20
+        self.assertEqual(st["chips"][str(a)], START + 50)                       # settled at once: the chips are back in the stack
+        self.assertEqual(bj.in_play(st, a), 0)
+        self.assertEqual(sum(bj.holdings(st, u) for u in st["players"]), START * 4)
+
+    def test_push_returns_the_bet(self):
+        st, d, order = self.fresh(2)
+        p = order[0]
+        go(st, p, "bet:60")
+        self.rig(st, [("10D", "9D")], ("10H", "9H"))
+        deal(st); go(st, p, "stand")
+        self.assertEqual((st["chips"][str(p)], st["chips"][str(d)]), (START, START))
+
+    def test_double_costs_a_second_bet_and_pays_double(self):
+        st, d, order = self.fresh(2)
+        p = order[0]
+        go(st, p, "bet:40")
+        self.rig(st, [("5D", "6D")], ("10H", "8H"), ("10C",))
+        deal(st)
+        self.assertEqual(bj.options(st, p)[2], {"a": "double", "cost": 40})
+        go(st, p, "double")
+        self.assertEqual(st["phase"], "result")
+        self.assertEqual((st["chips"][str(p)], st["chips"][str(d)]), (START + 80, START - 80))
+
+    def test_double_that_loses_costs_both_bets(self):
+        st, d, order = self.fresh(2)
+        p = order[0]
+        go(st, p, "bet:40")
+        self.rig(st, [("5D", "6D")], ("10H", "8H"), ("2C",))
+        deal(st); go(st, p, "double")
+        self.assertEqual((st["chips"][str(p)], st["chips"][str(d)]), (START - 80, START + 80))
+
+    def test_split_puts_a_second_bet_on_the_table(self):
+        st, d, order = self.fresh(2)
+        p = order[0]
+        go(st, p, "bet:40")
+        self.rig(st, [("8D", "8C")], ("10H", "7H"), ("3C", "2S", "10S"))
+        deal(st)
+        go(st, p, "split")
+        self.assertEqual((st["chips"][str(p)], bj.in_play(st, p), bj.holdings(st, p)), (START - 80, 80, START))
+        go(st, p, "stand"); go(st, p, "hit"); go(st, p, "stand")                # 11 loses to 17, 20 wins
+        self.assertEqual(st["chips"][str(p)], START)                            # one bet lost, one won
+
+    def test_insurance_costs_half_the_bet_and_pays_two_to_one(self):
+        st, d, order = self.fresh(3)
+        a, b = order
+        go(st, a, "bet:50"); go(st, b, "bet:50")
+        self.rig(st, [("10D", "9D"), ("8D", "8C")], ("AH", "KH"))
+        deal(st)
+        self.assertEqual(bj.options(st, a)[0], {"a": "ins:yes", "cost": 25})
+        go(st, a, "ins:yes")
+        self.assertEqual(st["chips"][str(a)], START - 75)                       # bet 50 + insurance 25
+        go(st, b, "ins:no")
+        self.assertEqual(st["phase"], "result")                                 # dealer blackjack
+        self.assertEqual(bj.holdings(st, a) - START, 0)                         # lost 50, insurance pays 50
+        self.assertEqual(bj.holdings(st, b) - START, -50)
+        self.assertEqual(bj.holdings(st, d) - START, 50)
+
+    def test_lost_insurance_is_only_the_half_bet(self):
+        st, d, order = self.fresh(2)
+        p = order[0]
+        go(st, p, "bet:50")
+        self.rig(st, [("10D", "9D")], ("AH", "6H"))
+        deal(st); go(st, p, "ins:yes"); go(st, p, "stand")
+        self.assertEqual(bj.holdings(st, p) - START, 50 - 25)                   # 19 beats soft 17, insurance lost
+
+    def test_cannot_afford_double_split_or_insurance(self):
+        st, d, order = self.fresh(2)
+        p = order[0]
+        st["chips"][str(p)] = 70
+        go(st, p, "bet:40")                                                     # 30 left: not enough to double a 40 bet
+        self.rig(st, [("8D", "8C")], ("10H", "7H"))
+        deal(st)
+        opts = {o["a"]: o for o in bj.options(st, p)}
+        self.assertEqual(opts["double"]["off"], "Not enough chips")
+        self.assertEqual(opts["split"]["off"], "Not enough chips")
+        self.assertEqual(bj.act(st, p, "double", 0), "Not enough chips to double.")
+        self.assertEqual(bj.act(st, p, "split", 0), "Not enough chips to split.")
+        self.assertEqual(st["chips"][str(p)], 30)                               # nothing was taken
+        st2, d2, order2 = self.fresh(2)
+        q = order2[0]
+        st2["chips"][str(q)] = 52
+        go(st2, q, "bet:50")
+        self.rig(st2, [("10D", "9D")], ("AH", "6H"))
+        deal(st2)
+        self.assertEqual(bj.options(st2, q)[0], {"a": "ins:yes", "cost": 25, "off": "Not enough chips"})
+        self.assertEqual(bj.act(st2, q, "ins:yes", 0), "You do not have enough chips for insurance.")
+
+    def test_bank_that_cannot_cover_it_blocks_double_and_split(self):
+        st, d, order = self.fresh(2)
+        p = order[0]
+        st["chips"][str(d)] = 100
+        go(st, p, "bet:20")                                                     # table limit 100 // 2 = 50
+        self.rig(st, [("8D", "8C")], ("10H", "7H"))
+        deal(st)
+        st["chips"][str(d)] = 30                                                # the bank shrank (e.g. lost elsewhere): exposure 20, free 10
+        opts = {o["a"]: o for o in bj.options(st, p)}
+        self.assertEqual(opts["double"]["off"], "The bank cannot cover it")
+        self.assertEqual(bj.act(st, p, "split", 0), "The bank cannot cover it to split.")
+
+    def test_banks_chips_never_go_below_zero_even_when_everyone_wins_big(self):
+        st, d, order = self.fresh(4)
+        st["chips"][str(d)] = 120                                               # table limit 120 // 6 = 20
+        self.assertEqual(bj.table_max(st), 20)
+        for u in order:
+            go(st, u, "bet:20")
+        self.rig(st, [("AD", "KD")] * 3, ("10H", "8H"))
+        deal(st)
+        self.assertEqual(st["chips"][str(d)], 120 - 3 * 30)
+        self.assertGreaterEqual(st["chips"][str(d)], 0)
+
+    def test_round_with_no_bets_is_skipped_and_counts_as_a_round(self):
+        st, d, order = self.fresh(3)
+        for u in order:
+            go(st, u, "sit")
+        self.assertEqual((st["phase"], st["rnd"]["no"], st["rb"]), ("deal", 2, 2))      # nobody bet: next round opened by itself
+        self.assertEqual(st["rnd"]["dealer"], d)
+        self.assertIn("no_bets", [e["a"] for e in st["log"]])
+
+    def test_betting_time_up_players_who_did_not_bet_sit_out_and_miss_a_turn(self):
+        st, d, order = self.fresh(3)
+        a, b = order
+        go(st, a, "bet:20")
+        self.rig(st, [("9D", "9C")], ("10H", "7H"))
+        self.assertTrue(bj.settle(st, bj.DEAL_MS + 1))
+        self.assertEqual(st["phase"], "play")                                   # the cards went out
+        self.assertEqual(st["timeouts"].get(str(b)), 1)                         # b was too slow
+        self.assertNotIn(str(d), st["timeouts"])                                # the dealer was waiting for b, not at fault
+        self.assertEqual(list(st["rnd"]["hands"]), [str(a)])
+
+    def test_dealer_is_at_fault_only_when_everyone_had_decided(self):
+        st, d, order = self.fresh(3)
+        go(st, order[0], "bet:20"); go(st, order[1], "sit")
+        self.assertTrue(bj.settle(st, bj.DEAL_MS + 1))
+        self.assertEqual(st["timeouts"].get(str(d)), 1)
+
+    def test_everyone_who_does_not_bet_for_the_whole_time_skips_the_round(self):
+        st, d, order = self.fresh(3)
+        self.assertTrue(bj.settle(st, bj.DEAL_MS + 1))
+        self.assertEqual(st["rnd"]["no"], 2)
+        self.assertEqual({st["timeouts"][str(u)] for u in order}, {1})
+
+    def test_a_new_game_starts_everyone_on_a_fresh_stack_and_the_game_goes_to_the_biggest_holdings(self):
+        st = bj.new_table([1, 2], 2, 0)
+        st["chips"] = {"1": 1300, "2": 700}
+        bj._close_game(st)
+        self.assertEqual(st["gdone"][0]["winner"], 1)
+        self.assertEqual(st["gdone"][0]["net"], {"1": 300, "2": -300})
+        self.assertEqual(st["chips"], {"1": START, "2": START})
+        self.assertEqual(st["scores"], {"1": 300, "2": -300})
+
+    def test_closing_the_table_mid_round_gives_the_chips_on_it_back(self):
+        st = table(3, hands=[("10D", "9D"), ("8D", "8C")], dealer=("10H", "7H"), bet=40)
+        deal(st)
+        go(st, st["rnd"]["order"][0], "leave")
+        go(st, st["rnd"]["order"][1], "leave")                                  # only the dealer is left
+        self.assertEqual(st["phase"], "over")
+        self.assertEqual(sum(st["chips"].values()), START * 3)
+        self.assertEqual(set(st["chips"].values()), {START})
+
+    def test_a_player_who_left_still_has_their_bet_settled(self):
+        st, d, order = self.fresh(3)
+        a, b = order
+        go(st, a, "bet:40"); go(st, b, "bet:40")
+        self.rig(st, [("10D", "9D"), ("10C", "7C")], ("10H", "8H"))
+        deal(st)
+        go(st, a, "leave")                                                      # a stands on 19
+        go(st, b, "stand")
+        self.assertEqual([bj.holdings(st, u) - START for u in (a, b, d)], [40, -40, 0])
+
+    def test_the_view_shows_everybodys_holdings_and_the_viewers_seat_data(self):
+        st, d, order = self.fresh(3)
+        go(st, order[0], "bet:60")
+        v = bj.public_view(st, order[1], 0)
+        rows = {r["id"]: r for r in v["players"]}
+        self.assertEqual((rows[order[0]]["chips"], rows[order[0]]["in_play"], rows[order[0]]["hold"]), (940, 60, 1000))
+        self.assertEqual(rows[d]["hold"], START)
+        self.assertEqual((v["bank"], v["table_max"], v["start"], v["min_bet"]), (START, 250, START, 10))
+        self.assertEqual(v["order"], order)
+        self.assertEqual([o["a"] for o in v["options"]], ["bet", "sit"])
+        self.assertEqual(v["options"][0], {"a": "bet", "min": 10, "max": 250, "cur": 0, "last": 0})
+
+    def test_last_bet_is_remembered(self):
+        st, d, order = self.fresh(3)
+        go(st, order[0], "bet:44")
+        self.assertEqual(st["lastbet"][str(order[0])], 44)
+
+
 class FuzzTests(SimpleTestCase):
-    """Random players, random timers: scores always add up to zero, the match always ends, nobody is ever stuck."""
+    """Random players, random bets, random timers: chips only ever move between players (the total never changes),
+    nobody ever goes below zero, the match always ends, nobody is ever stuck."""
 
     def test_random_matches(self):
         for n in (2, 3, 5, 7):
@@ -693,15 +998,25 @@ class FuzzTests(SimpleTestCase):
                     steps += 1
                     self.assertLess(steps, 20000, "stuck")
                     json.dumps(st)
-                    acts = [(u, o["a"]) for u in st["players"] for o in bj.options(st, u)]
+                    acts = []
+                    for u in st["players"]:
+                        for o in bj.options(st, u):
+                            if o.get("off"):
+                                self.assertTrue(bj.act(st, u, o["a"], now))          # greyed out means refused
+                            elif o["a"] == "bet":
+                                amt = rng.choice((o["min"], o["max"], rng.randrange(o["min"] // 2, o["max"] // 2 + 1) * 2))
+                                acts.append((u, f"bet:{amt}"))
+                            else:
+                                acts.append((u, o["a"]))
                     self.assertTrue(acts or st["deadline"], f"nobody can act in {st['phase']}")
                     if not acts or rng.random() < 0.03:
                         now += 10 ** 6
                         bj.settle(st, now)
-                        continue
-                    u, a = rng.choice(acts)
-                    self.assertIsNone(bj.act(st, u, a, now))
-                    self.assertEqual(sum(st["scores"].values()), 0)
+                    else:
+                        u, a = rng.choice(acts)
+                        self.assertIsNone(bj.act(st, u, a, now), (u, a))
+                    self.assertEqual(sum(bj.holdings(st, u) for u in st["players"]), bj.START_CHIPS * n)
+                    self.assertTrue(all(c >= 0 for c in st["chips"].values()), st["chips"])
                     for h in (st["rnd"]["hands"].values() if st["rnd"] else []):
                         self.assertLessEqual(len(h), bj.MAX_HANDS)
                 self.assertTrue(st["summary"])
@@ -779,6 +1094,9 @@ class BlackjackScreensTests(TestCase):
         s = self.start()
         d = s.state["rnd"]["dealer"]
         order = s.state["rnd"]["order"]
+        for u in order:
+            self.client.force_login(User.objects.get(pk=u))
+            self.assertEqual(self.client.post(reverse("game_move", args=[s.pk]), {"action": "bj", "move": "bet:20"}).status_code, 200)
         self.client.force_login(User.objects.get(pk=d))
         r = self.client.post(reverse("game_move", args=[s.pk]), {"action": "bj", "move": "deal"})
         self.assertEqual(r.status_code, 200, r.content)
@@ -820,7 +1138,8 @@ class BlackjackScreensTests(TestCase):
                 break
             ph = st["phase"]
             if ph == "deal":
-                r = move(st["rnd"]["dealer"], "deal")
+                waiting = [u for u in st["rnd"]["order"] if str(u) not in st["rnd"]["bets"]]
+                r = move(waiting[0], "bet:30") if waiting else move(st["rnd"]["dealer"], "deal")
             elif ph == "insurance":
                 u = next(int(k) for k, v in st["rnd"]["ins"].items() if v is None)
                 r = move(u, "ins:no")
@@ -833,7 +1152,8 @@ class BlackjackScreensTests(TestCase):
             self.assertEqual(r.status_code, 200, r.content)
         s.refresh_from_db()
         self.assertEqual(s.state["rnd"]["no"], 2)                                  # round 1 was played and round 2 opened
-        self.assertEqual(sum(s.state["scores"].values()), 0)
+        st = s.state
+        self.assertEqual(sum(st["chips"].values()), bj.START_CHIPS * 3)             # chips only moved between players
 
     def test_the_game_page_loads_and_old_games_still_work(self):
         s = self.start()

@@ -32,7 +32,7 @@ Game = GameChallenge.Game
 GAME_CARDS = [
     {"key": Game.TEEN_PATTI, "label": "Teen Patti", "blurb": "Flash with play money: blind or seen, side shows, a big pot. Up to 9 at one table.",
      "who": "2 to 9 players", "party": True, "max": 8, "glyph": "♠", "theme": "tp"},
-    {"key": Game.BLACKJACK, "label": "Blackjack", "blurb": "Beat the dealer to 21. Everyone takes a turn as dealer, five rounds each. Hit, stand, double, split.",
+    {"key": Game.BLACKJACK, "label": "Blackjack", "blurb": "Beat the dealer to 21. Everyone takes a turn as dealer, five rounds each. Bet your chips, then hit, stand, double, split.",
      "who": "2 to 7 players", "party": True, "max": 6, "glyph": "21", "theme": "bj"},
     {"key": Game.CHESS, "label": "Chess", "blurb": "The full game with clocks, castling, en passant and draw offers.",
      "who": "2 players", "party": False, "max": 1, "glyph": "♞", "theme": "chess"},
@@ -387,6 +387,8 @@ def game_payload(session, user):
         nxt = bje.info(state)["next"]
         if state["phase"] == "insurance" and state["rnd"]["ins"].get(str(user.id), True) is None:
             nxt = user.id                            # several people answer insurance at once: it is "your turn" if you have not
+        if bje.owes_bet(state, user.id):
+            nxt = user.id                            # everybody bets at once: it is "your turn" until you bet or sit out
         out["turn"] = nxt if session.is_active else None
     elif ch.game == Game.LUDO:
         dice = state.get("dice")

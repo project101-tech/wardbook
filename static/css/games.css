@@ -431,7 +431,7 @@
 .bj-result .one.win b, .bj-result .one.blackjack b { color: #16864a; } .bj-result .one.lose b, .bj-result .one.bust b { color: #c42b3d; }
 .bj-result .net, .bj-score .up { color: #16864a; } .bj-result .net.down, .bj-score .down { color: #c42b3d; } .bj-result .net { font-weight: 800; min-width: 2.6rem; text-align: right; }
 .bj-score { background: #fff; border: 1px solid var(--g-line); border-radius: 16px; padding: .6rem .8rem; }
-.bj-score .srow { display: grid; grid-template-columns: 1fr 4.4rem 4.4rem 4rem; gap: .3rem; padding: .28rem 0; border-bottom: 1px solid #eef0f4; font-size: .88rem; align-items: center; }
+.bj-score .srow { display: grid; grid-template-columns: 1fr 4.6rem 4.6rem 3.4rem; gap: .3rem; padding: .28rem 0; border-bottom: 1px solid #eef0f4; font-size: .88rem; align-items: center; }
 .bj-score .srow.head { font-size: .68rem; color: var(--wb-muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
 .bj-score .srow > span:not(.nm) { text-align: right; } .bj-score .srow.me { font-weight: 800; } .bj-score .srow.gone { opacity: .5; }
 .bj-score .nm { display: flex; align-items: center; min-width: 0; } .bj-score .nm .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .bj-score .dl { font-style: normal; font-size: .62rem; font-weight: 800; background: #e8f0fe; color: #1558b8; border-radius: 99px; padding: .02rem .4rem; margin-left: .35rem; }
@@ -443,3 +443,38 @@
 .bj-rules { background: #fff; border: 1px solid var(--g-line); border-radius: 16px; padding: .5rem .8rem; font-size: .86rem; } .bj-rules summary { font-weight: 800; cursor: pointer; }
 .bj-rules ul { margin: .5rem 0 .2rem; padding-left: 1.1rem; display: grid; gap: .35rem; color: #3b4352; }
 @media (prefers-reduced-motion: reduce) { .bj-card.deal, .bj-seat.turn { animation: none; } }
+
+/* ---- betting, holdings and "my seat is at the bottom" ---- */
+.bj-felt.dealer-view .bj-dealer { padding: .6rem 0 0; } .bj-felt.dealer-view .bj-banner { margin: .8rem auto .5rem; }
+.bj-dealer.mine { --bjw: clamp(46px, 12vw, 70px); }
+.bj-mine { margin-top: .8rem; display: flex; justify-content: center; }
+.bj-mine:empty { display: none; }
+.bj-seat.big { width: min(100%, 420px); --bjw: clamp(50px, 13vw, 72px); padding: .7rem .5rem .6rem; border-width: 3px; }
+.bj-seat.big .bj-name { font-size: 1.05rem; }
+.bj-meta { align-items: center; }
+.bj-hold { font-weight: 800; }
+.bj-coin { display: inline-flex; align-items: center; justify-content: center; min-width: 2rem; padding: .05rem .5rem; border-radius: 99px; font-size: .72rem; font-weight: 800; color: #3b2a00;
+  background: radial-gradient(circle at 30% 30%, #ffe08a, #f2b01e); box-shadow: 0 0 0 2px #fff6d6 inset, 0 2px 4px rgba(0, 0, 0, .35); }
+.bj-coin.big { font-size: 1rem; min-width: 3.2rem; padding: .35rem .8rem; }
+
+.bj-wallet { display: none; background: #fff; border: 1px solid var(--g-line); border-radius: 16px; padding: .5rem .6rem; }
+.bj-wallet.show { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .4rem; text-align: center; }
+.bj-wallet .wl { display: block; font-size: .68rem; color: var(--wb-muted); font-weight: 700; }
+.bj-wallet b { font-size: 1.1rem; } .bj-wallet b.up { color: #16864a; } .bj-wallet b.down { color: #c42b3d; }
+
+.bj-bet { display: none; background: #fff; border: 2px solid #f2b01e; border-radius: 16px; padding: .7rem .8rem; }
+.bj-bet.show { display: block; animation: tpIn .3s ease-out; }
+.bj-bet .bt-head { font-weight: 800; font-size: 1rem; }
+.bj-bet .bt-info { font-size: .8rem; color: #5b6472; margin: .15rem 0 .5rem; }
+.bj-bet .bt-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.bj-bet .bt-in { width: 7.5rem; border: 2px solid var(--g-line); border-radius: 12px; padding: .5rem .6rem; font-size: 1.15rem; font-weight: 800; text-align: center; }
+.bj-bet .bt-in:focus { outline: 0; border-color: #1877f2; box-shadow: 0 0 0 3px rgba(24, 119, 242, .2); }
+.bj-bet .bt-quick { display: flex; flex-wrap: wrap; gap: .3rem; }
+.bj-bet .bt-q { border: 0; border-radius: 99px; padding: .4rem .75rem; font-weight: 800; font-size: .82rem; background: radial-gradient(circle at 30% 30%, #ffe08a, #f2b01e); color: #3b2a00; box-shadow: 0 2px 0 rgba(0, 0, 0, .15); }
+.bj-bet .bt-q:active { transform: translateY(1px); }
+.bj-bet .bt-msg { min-height: 1.1rem; font-size: .78rem; color: #c42b3d; margin-top: .3rem; }
+.bj-bet .bt-btns { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .2rem; }
+.bj-bet .bt-go { min-width: 160px; }
+
+.bj-score.final .srow { grid-template-columns: 1fr 5rem 5.6rem; }
+.bj-btn[disabled] small { opacity: 1; color: #c42b3d; font-weight: 700; }
